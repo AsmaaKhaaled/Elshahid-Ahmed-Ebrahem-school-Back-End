@@ -1,50 +1,40 @@
 import { AuthService } from './auth.service.js';
-import { ApiResponse } from '../../shared/utils/api-response.js';
 
 export class AuthController {
-  static async register(req, res, next) {
-    try {
-      const result = await AuthService.register(req.body);
-      return ApiResponse.created(res, result, 'User registered successfully');
-    } catch (error) {
-      next(error);
-    }
-  }
-
+  /**
+   * POST /api/v1/auth/login
+   */
   static async login(req, res, next) {
     try {
       const result = await AuthService.login(req.body);
-      return ApiResponse.success(res, {
-        statusCode: 200,
-        message: 'Login successful',
-        data: result,
-      });
+      return res.status(200).json(result);
     } catch (error) {
       next(error);
     }
   }
 
-  static async refreshToken(req, res, next) {
+  /**
+   * PATCH /api/v1/auth/set-initial-password
+   */
+  static async setInitialPassword(req, res, next) {
     try {
-      const { refreshToken } = req.body;
-      const tokens = await AuthService.refreshToken(refreshToken);
-      return ApiResponse.success(res, {
-        statusCode: 200,
-        message: 'Token refreshed successfully',
-        data: tokens,
-      });
+      const { newPassword } = req.body;
+      const result = await AuthService.setInitialPassword(req.user.id, newPassword);
+      return res.status(200).json(result);
     } catch (error) {
       next(error);
     }
   }
 
+  /**
+   * GET /api/v1/auth/me
+   */
   static async getMe(req, res, next) {
     try {
-      const user = await AuthService.getCurrentUser(req.user.id);
-      return ApiResponse.success(res, {
-        statusCode: 200,
-        message: 'Current user profile retrieved',
-        data: user,
+      const user = await AuthService.getMe(req.user.id);
+      return res.status(200).json({
+        status: 'success',
+        user,
       });
     } catch (error) {
       next(error);
@@ -53,4 +43,3 @@ export class AuthController {
 }
 
 export default AuthController;
-

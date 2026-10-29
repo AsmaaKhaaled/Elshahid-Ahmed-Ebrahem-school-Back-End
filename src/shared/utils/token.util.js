@@ -13,6 +13,38 @@ export const generateAccessToken = (payload) => {
 };
 
 /**
+ * Generate Standard Token (7 days)
+ * @param {Object} payload
+ * @returns {string} JWT Token
+ */
+export const signStandardToken = (payload) => {
+  return jwt.sign(
+    {
+      ...payload,
+      isTemp: false,
+    },
+    env.JWT_SECRET,
+    { expiresIn: '7d' }
+  );
+};
+
+/**
+ * Generate Temporary Token (15 minutes)
+ * @param {Object} payload
+ * @returns {string} JWT Token
+ */
+export const signTempToken = (payload) => {
+  return jwt.sign(
+    {
+      ...payload,
+      isTemp: true,
+    },
+    env.JWT_SECRET,
+    { expiresIn: '15m' }
+  );
+};
+
+/**
  * Generate Refresh Token
  * @param {Object} payload
  * @returns {string} JWT Refresh Token
@@ -44,6 +76,8 @@ export const verifyRefreshToken = (token) => {
 export default {
   generateAccessToken,
   generateRefreshToken,
+  signStandardToken,
+  signTempToken,
   verifyAccessToken,
   verifyRefreshToken,
 };

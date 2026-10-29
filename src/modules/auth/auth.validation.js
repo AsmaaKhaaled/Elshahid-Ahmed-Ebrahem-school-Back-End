@@ -1,62 +1,73 @@
+/**
+ * Authentication Module Request Validation
+ */
+
+export const loginSchema = (req) => {
+  const { identifier, password } = req?.body || req || {};
+  const errors = [];
+
+  if (!identifier || typeof identifier !== 'string' || identifier.trim().length === 0) {
+    errors.push({
+      field: 'identifier',
+      message: 'Identifier is required (Email, Student Code, or National ID)',
+    });
+  }
+
+  if (!password || typeof password !== 'string' || password.trim().length === 0) {
+    errors.push({
+      field: 'password',
+      message: 'Password is required',
+    });
+  }
+
+  if (errors.length > 0) {
+    return {
+      message: 'Validation failed',
+      details: errors,
+    };
+  }
+
+  return null;
+};
+
+export const setInitialPasswordSchema = (req) => {
+  const { newPassword, confirmPassword } = req?.body || req || {};
+  const errors = [];
+
+  if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 6) {
+    errors.push({
+      field: 'newPassword',
+      message: 'New password must be at least 6 characters long',
+    });
+  }
+
+  if (!confirmPassword || typeof confirmPassword !== 'string') {
+    errors.push({
+      field: 'confirmPassword',
+      message: 'Confirm password is required',
+    });
+  } else if (newPassword && newPassword !== confirmPassword) {
+    errors.push({
+      field: 'confirmPassword',
+      message: 'Passwords do not match',
+    });
+  }
+
+  if (errors.length > 0) {
+    return {
+      message: 'Validation failed',
+      details: errors,
+    };
+  }
+
+  return null;
+};
+
 export const authValidation = {
-  register: (req) => {
-    const { name, email, password, role } = req.body || {};
-    const errors = [];
-
-    if (!name || typeof name !== 'string' || name.trim().length < 2) {
-      errors.push({ field: 'name', message: 'Name must be at least 2 characters long' });
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!email || !emailRegex.test(email)) {
-      errors.push({ field: 'email', message: 'Valid email address is required' });
-    }
-
-    if (!password || typeof password !== 'string' || password.length < 6) {
-      errors.push({ field: 'password', message: 'Password must be at least 6 characters long' });
-    }
-
-    const validRoles = ['ADMIN', 'TEACHER', 'STUDENT', 'PARENT'];
-    if (role && !validRoles.includes(role)) {
-      errors.push({ field: 'role', message: `Role must be one of: ${validRoles.join(', ')}` });
-    }
-
-    if (errors.length > 0) {
-      return { message: 'Validation failed', details: errors };
-    }
-    return null;
-  },
-
-  login: (req) => {
-    const { email, password } = req.body || {};
-    const errors = [];
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!email || !emailRegex.test(email)) {
-      errors.push({ field: 'email', message: 'Valid email address is required' });
-    }
-
-    if (!password || typeof password !== 'string') {
-      errors.push({ field: 'password', message: 'Password is required' });
-    }
-
-    if (errors.length > 0) {
-      return { message: 'Validation failed', details: errors };
-    }
-    return null;
-  },
-
-  refreshToken: (req) => {
-    const { refreshToken } = req.body || {};
-    if (!refreshToken || typeof refreshToken !== 'string') {
-      return {
-        message: 'Validation failed',
-        details: [{ field: 'refreshToken', message: 'Refresh token string is required' }],
-      };
-    }
-    return null;
-  },
+  login: loginSchema,
+  setInitialPassword: setInitialPasswordSchema,
+  loginSchema,
+  setInitialPasswordSchema,
 };
 
 export default authValidation;
-
