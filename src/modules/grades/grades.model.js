@@ -1,0 +1,229 @@
+import { prisma } from '../../config/database.js';
+
+const calculateGradeLetter = (percentage) => {
+  if (percentage >= 95) return 'A+';
+  if (percentage >= 85) return 'A';
+  if (percentage >= 75) return 'B';
+  if (percentage >= 65) return 'C';
+  if (percentage >= 50) return 'D';
+  return 'F';
+};
+
+export class GradeModel {
+  // --- Exam Schedules Logic ---
+  static async findAllExams({ classId, subjectId, type } = {}) {
+    const where = {};
+
+    if (classId) {
+      where.classId = classId;
+    }
+
+    if (subjectId) {
+      where.subjectId = subjectId;
+    }
+
+    if (type) {
+      where.type = type.toUpperCase();
+    }
+
+    return prisma.exam.findMany({
+      where,
+      include: {
+        subject: { select: { id: true, code: true, nameArabic: true } },
+        class: { select: { id: true, name: true } },
+        announcedBy: { select: { id: true, name: true } },
+      },
+      orderBy: { examDate: 'asc' },
+    });
+  }
+
+  static async findExamById(id) {
+    return prisma.exam.findUnique({
+      where: { id },
+      include: {
+        subject: true,
+        class: true,
+        announcedBy: { select: { id: true, name: true } },
+        grades: {
+          include: {
+            student: { select: { id: true, studentCode: true, fullNameArabic: true } },
+          },
+        },
+      },
+    });
+  }
+
+  static async createExam(data) {
+    return prisma.exam.create({
+      data: {
+        title: data.title,
+        type: data.type ? data.type.toUpperCase() : 'MIDTERM',
+        subjectId: data.subjectId,
+        classId: data.classId,
+        examDate: new Date(data.examDate),
+        durationMinutes: Number(data.durationMinutes) || 60,
+        maxScore: Number(data.maxScore) || 100,
+        passScore: Number(data.passScore) || 50,
+        room: data.room || null,
+        announcedById: data.announcedById || null,
+      },
+      include: {
+        subject: true,
+        class: true,
+      },
+    });
+  }
+
+  static async updateExam(id, data) {
+    const updateData = { ...data };
+    if (updateData.type) {
+      updateData.type = updateData.type.toUpperCase();
+    }
+    if (updateData.examDate) {
+      updateData.examDate = new Date(updateData.examDate);
+    }
+    if (updateData.durationMinutes !== undefined) {
+      updateData.durationMinutes = Number(updateData.durationMinutes);
+    }
+    if (updateData.maxScore !== undefined) {
+      updateData.maxScore = Number(updateData.maxScore);
+    }
+    if (updateData.passScore !== undefined) {
+      updateData.passScore = Number(updateData.passScore);
+    }
+
+    return prisma.exam.update({
+      where: { id },
+      data: updateData,
+    });
+  }
+
+  static async deleteExam(id) {
+    await prisma.exam.delete({
+      where: { id },
+    });
+    return true;
+  }
+
+  // --- Marks Recording Logic ---
+  static async findAllGrades({ studentId, examId, subjectId } = {}) {
+    const where = {};
+
+    if (studentId) {
+      where.studentId = studentId;
+    }
+
+    if (examId) {
+      where.examId = examId;
+    }
+
+    if (subjectId) {
+      where.subjectId = subjectId;
+    }
+
+    return prisma.grade.findMany({
+      where,
+      include: {
+        student: { select: { id: true, studentCode: true, fullNameArabic: true } },
+        exam: { select: { id: true, title: true, type: true, examDate: true } },
+        subject: { select: { id: true, code: true, nameArabic: true } },
+        recordedBy: { select: { id: true, name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  static async findGradeById(id) {
+    return prisma.grade.findUnique({
+      where: { id },
+      include: {
+        student: true,
+        exam: true,
+        subject: true,
+        recordedBy: { select: { id: true, name: true } },
+      },
+    });
+  }
+
+  static async createGrade(data) {
+    const score = Number(data.score);
+    const maxScore = Number(data.maxScore) || 100;
+    const percentage = Math.round((score / maxScore) * 100);
+    const gradeLetter = calculateGradeLetter(percentage);
+
+    return prisma.grade.upsert({
+      where: {
+        studentId_examId: {
+          studentId: data.studentId,
+          examId: data.examId,
+        },
+      },
+      update: {
+        score,
+        maxScore,
+        percentage,
+        gradeLetter,
+        remarks: data.remarks || null,
+        recordedById: data.recordedById || null,
+      },
+      create: {
+        studentId: data.studentId,
+        examId: data.examId,
+        subjectId: data.subjectId,
+        score,
+        maxScore,
+        percentage,
+        gradeLetter,
+        remarks: data.remarks || null,
+        recordedById: data.recordedById || null,
+      },
+      include: {
+        student: true,
+        exam: true,
+        subject: true,
+      },
+    });
+  }
+
+  static async recordBulkMarks(marksList, recordedById) {
+    const results = [];
+    for (const item of marksList) {
+      const res = await this.createGrade({
+        ...item,
+        recordedById,
+      });
+      results.push(res);
+    }
+    return results;
+  }
+
+  static async updateGrade(id, data) {
+    const current = await prisma.grade.findUnique({ where: { id } });
+    if (!current) return null;
+
+    const score = data.score !== undefined ? Number(data.score) : current.score;
+    const maxScore = data.maxScore !== undefined ? Number(data.maxScore) : current.maxScore;
+    const percentage = Math.round((score / maxScore) * 100);
+    const gradeLetter = calculateGradeLetter(percentage);
+
+    return prisma.grade.update({
+      where: { id },
+      data: {
+        ...data,
+        score,
+        maxScore,
+        percentage,
+        gradeLetter,
+      },
+    });
+  }
+
+  static async deleteGrade(id) {
+    await prisma.grade.delete({
+      where: { id },
+    });
+    return true;
+  }
+}
+
+export default GradeModel;

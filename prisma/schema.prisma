@@ -1,0 +1,359 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL_POOLED")
+  directUrl = env("DATABASE_URL")
+}
+
+// ==========================================
+// 1. Core Identity & User Management
+// ==========================================
+
+enum Role {
+  ADMIN
+  TEACHER
+  STUDENT
+  PARENT
+}
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      Role     @default(STUDENT)
+  phone     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Profile Relations
+  studentProfile Student?
+  teacherProfile Teacher?
+
+  // Operational Relations
+  recordedAttendances   Attendance[]   @relation("AttendanceRecorder")
+  recordedGrades        Grade[]        @relation("GradeRecorder")
+  announcedExams        Exam[]         @relation("ExamAnnouncer")
+  uploadedMaterials     Material[]     @relation("MaterialUploader")
+  authoredAnnouncements Announcement[] @relation("AnnouncementAuthor")
+
+  @@map("users")
+}
+
+// ==========================================
+// 2. Students Management
+// ==========================================
+
+model Student {
+  id              String   @id @default(cuid())
+  userId          String?  @unique
+  studentCode     String   @unique
+  fullNameArabic  String
+  fullNameEnglish String?
+  nationalId      String?  @unique
+  gender          Gender   @default(MALE)
+  dateOfBirth     String?
+  classId         String?
+  guardianName    String?
+  guardianPhone   String?
+  address         String?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user        User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  class       Class?       @relation(fields: [classId], references: [id], onDelete: SetNull)
+  attendances Attendance[]
+  grades      Grade[]
+
+  @@map("students")
+}
+
+// ==========================================
+// 3. Teachers Management
+// ==========================================
+
+model Teacher {
+  id              String   @id @default(cuid())
+  userId          String?  @unique
+  teacherCode     String   @unique
+  fullNameArabic  String
+  fullNameEnglish String?
+  nationalId      String?  @unique
+  specialization  String
+  email           String?
+  phone           String?
+  hireDate        String?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user              User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  supervisedClasses Class[]     @relation("ClassTeacherSupervisor")
+  subjects          Subject[]   @relation("TeacherSubjects")
+  classes           Class[]     @relation("TeacherClasses")
+  timetableEntries  Timetable[]
+
+  @@map("teachers")
+}
+
+// ==========================================
+// 4. Classrooms Management (e.g. 1/A, 1/B)
+// ==========================================
+
+model Class {
+  id                 String   @id @default(cuid())
+  name               String   @unique // e.g. "1/A", "1/B"
+  displayNameArabic  String?
+  gradeLevel         String // e.g. "1st Preparatory"
+  roomNumber         String?
+  capacity           Int      @default(40)
+  classTeacherId     String?
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  classTeacher     Teacher?       @relation("ClassTeacherSupervisor", fields: [classTeacherId], references: [id], onDelete: SetNull)
+  assignedTeachers Teacher[]      @relation("TeacherClasses")
+  students         Student[]
+  timetableEntries Timetable[]
+  materials        Material[]
+  attendances      Attendance[]
+  exams            Exam[]
+  announcements    Announcement[]
+
+  @@map("classes")
+}
+
+// ==========================================
+// 5. Subjects Management
+// ==========================================
+
+model Subject {
+  id          String   @id @default(cuid())
+  code        String   @unique // e.g. "MTH-101", "SCI-101"
+  nameArabic  String
+  nameEnglish String?
+  gradeLevel  String
+  maxMarks    Float    @default(100)
+  passMarks   Float    @default(50)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  teachers         Teacher[]   @relation("TeacherSubjects")
+  timetableEntries Timetable[]
+  materials        Material[]
+  exams            Exam[]
+  grades           Grade[]
+
+  @@map("subjects")
+}
+
+// ==========================================
+// 6. Timetable Management
+// ==========================================
+
+enum DayOfWeek {
+  SUNDAY
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+}
+
+model Timetable {
+  id           String    @id @default(cuid())
+  dayOfWeek    DayOfWeek
+  periodNumber Int
+  startTime    String // e.g. "08:00"
+  endTime      String // e.g. "08:45"
+  classId      String
+  subjectId    String
+  teacherId    String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  class   Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subject Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  teacher Teacher? @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+
+  @@unique([classId, dayOfWeek, periodNumber])
+  @@map("timetable")
+}
+
+// ==========================================
+// 7. Materials & Syllabus Management
+// ==========================================
+
+enum MaterialType {
+  SYLLABUS_PDF
+  MONTHLY_PLAN
+  WORKSHEET
+  REFERENCE
+}
+
+model Material {
+  id           String       @id @default(cuid())
+  title        String
+  type         MaterialType @default(SYLLABUS_PDF)
+  subjectId    String
+  classId      String?
+  month        String? // e.g. "October"
+  fileUrl      String
+  fileName     String?
+  fileSize     String?
+  description  String?
+  uploadedById String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  subject  Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  class    Class?  @relation(fields: [classId], references: [id], onDelete: SetNull)
+  uploader User?   @relation("MaterialUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@map("materials")
+}
+
+// ==========================================
+// 8. Attendance Management
+// ==========================================
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+model Attendance {
+  id           String           @id @default(cuid())
+  date         String // YYYY-MM-DD
+  studentId    String
+  classId      String
+  status       AttendanceStatus @default(PRESENT)
+  remarks      String?
+  recordedById String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  student    Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  class      Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+  recordedBy User?   @relation("AttendanceRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  @@unique([studentId, date])
+  @@map("attendances")
+}
+
+// ==========================================
+// 9. Exams & Marks (Grades) Management
+// ==========================================
+
+enum ExamType {
+  QUIZ
+  MIDTERM
+  FINAL
+  MONTHLY
+}
+
+model Exam {
+  id              String   @id @default(cuid())
+  title           String
+  type            ExamType @default(MIDTERM)
+  subjectId       String
+  classId         String
+  examDate        DateTime
+  durationMinutes Int      @default(60)
+  maxScore        Float    @default(100)
+  passScore       Float    @default(50)
+  room            String?
+  announcedById   String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  subject     Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  class       Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+  announcedBy User?   @relation("ExamAnnouncer", fields: [announcedById], references: [id], onDelete: SetNull)
+  grades      Grade[]
+
+  @@map("exams")
+}
+
+model Grade {
+  id           String   @id @default(cuid())
+  studentId    String
+  examId       String
+  subjectId    String
+  score        Float
+  maxScore     Float    @default(100)
+  percentage   Float
+  gradeLetter  String? // A+, A, B, C, D, F
+  remarks      String?
+  recordedById String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  student    Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  exam       Exam    @relation(fields: [examId], references: [id], onDelete: Cascade)
+  subject    Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  recordedBy User?   @relation("GradeRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  @@unique([studentId, examId])
+  @@map("grades")
+}
+
+// ==========================================
+// 10. Announcements & School Events
+// ==========================================
+
+enum AnnouncementType {
+  SCHOOL_WIDE
+  CLASS_NOTE
+}
+
+enum TargetAudience {
+  ALL
+  TEACHERS
+  STUDENTS
+  PARENTS
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model Announcement {
+  id             String           @id @default(cuid())
+  title          String
+  content        String
+  type           AnnouncementType @default(SCHOOL_WIDE)
+  targetAudience TargetAudience   @default(ALL)
+  priority       Priority         @default(MEDIUM)
+  classId        String?
+  authorId       String?
+  authorRole     String?
+  publishDate    String? // YYYY-MM-DD
+  isActive       Boolean          @default(true)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  class  Class? @relation(fields: [classId], references: [id], onDelete: SetNull)
+  author User?  @relation("AnnouncementAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@map("announcements")
+}
+
