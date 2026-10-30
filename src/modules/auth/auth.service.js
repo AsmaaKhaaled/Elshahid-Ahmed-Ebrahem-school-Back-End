@@ -6,25 +6,33 @@ import { AppError } from '../../shared/errors/app-error.js';
 
 export class AuthService {
   /**
-   * Helper: Sign Standard Full JWT Token (Expires in 7 days)
-   * @param {Object} payload { id, role, ... }
+   * Helper: Sign Standard Full JWT Token (Expires in 7 days by default)
+   * @param {Object} payload
+   * @param {string} [expiresIn='7d']
    * @returns {string} JWT Token
    */
-  static signStandardToken(payload) {
+  static signToken(payload, expiresIn = '7d') {
     return jwt.sign(
       {
         id: payload.id,
         role: payload.role,
-        isTemp: false,
+        isTemp: payload.isTemp || false,
       },
       env.JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn }
     );
   }
 
   /**
+   * Alias for signing standard token
+   */
+  static signStandardToken(payload) {
+    return this.signToken(payload, '7d');
+  }
+
+  /**
    * Helper: Sign Temporary Restricted JWT Token (Expires in 15 minutes)
-   * @param {Object} payload { id, role, ... }
+   * @param {Object} payload
    * @returns {string} Temporary JWT Token
    */
   static signTempToken(payload) {
@@ -40,8 +48,35 @@ export class AuthService {
   }
 
   /**
-   * Unified Login
-   * Resolves identifier against User.identifier / email, StudentProfile.studentCode, or Teacher.nationalId
+   * Profile inclusion configuration for student and teacher relations
+   */
+  static get userProfileIncludes() {
+    return {
+      studentProfile: {
+        include: {
+          class: {
+            select: { id: true, name: true, displayNameArabic: true, gradeLevel: true },
+          },
+        },
+      },
+      teacherProfile: {
+        include: {
+          subjects: true,
+          classes: true,
+        },
+      },
+    };
+  }
+
+  /**
+   * Unified Login Endpoint Logic
+   * Accepts { identifier, password }
+   * - Queries prisma.user where identifier matches and isActive is true
+   * - Verifies bcrypt password
+   * - Checks forcePasswordChange:
+   *     If true: returns tempToken (15m) and restricted payload
+   *     If false: returns standard token (7d) and loaded profile
+   *
    * @param {string|Object} identifierOrBody
    * @param {string} [passwordArg]
    */
@@ -61,59 +96,18 @@ export class AuthService {
 
     const trimmedIdentifier = identifier.trim();
 
-    // 1. Resolve User
-    let user = null;
+    // 1. Primary lookup: query prisma.user by identifier (or email) where isActive is true
+    let user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { identifier: trimmedIdentifier },
+          { email: trimmedIdentifier.toLowerCase() },
+        ],
+      },
+      include: this.userProfileIncludes,
+    });
 
-    // Check directly in User model (by identifier or email)
-    try {
-      user = await prisma.user.findFirst({
-        where: {
-          OR: [
-            { identifier: trimmedIdentifier },
-            { email: trimmedIdentifier.toLowerCase() },
-          ],
-        },
-        include: {
-          studentProfile: {
-            include: {
-              class: {
-                select: { id: true, name: true, displayNameArabic: true, gradeLevel: true },
-              },
-            },
-          },
-          teacherProfile: {
-            include: {
-              subjects: true,
-              classes: true,
-            },
-          },
-        },
-      });
-    } catch {
-      // In case identifier column is pending migration, fallback to email lookup
-      user = await prisma.user.findFirst({
-        where: {
-          email: trimmedIdentifier.toLowerCase(),
-        },
-        include: {
-          studentProfile: {
-            include: {
-              class: {
-                select: { id: true, name: true, displayNameArabic: true, gradeLevel: true },
-              },
-            },
-          },
-          teacherProfile: {
-            include: {
-              subjects: true,
-              classes: true,
-            },
-          },
-        },
-      });
-    }
-
-    // 2. If not matched, check StudentProfile (by studentCode or nationalId)
+    // 2. Resilient Fallback: If not found in User directly, lookup via Student or Teacher relation
     if (!user) {
       const student = await prisma.student.findFirst({
         where: {
@@ -124,21 +118,7 @@ export class AuthService {
         },
         include: {
           user: {
-            include: {
-              studentProfile: {
-                include: {
-                  class: {
-                    select: { id: true, name: true, displayNameArabic: true, gradeLevel: true },
-                  },
-                },
-              },
-              teacherProfile: {
-                include: {
-                  subjects: true,
-                  classes: true,
-                },
-              },
-            },
+            include: this.userProfileIncludes,
           },
         },
       });
@@ -148,7 +128,6 @@ export class AuthService {
       }
     }
 
-    // 3. If not matched, check TeacherProfile (by nationalId or teacherCode)
     if (!user) {
       const teacher = await prisma.teacher.findFirst({
         where: {
@@ -159,21 +138,7 @@ export class AuthService {
         },
         include: {
           user: {
-            include: {
-              studentProfile: {
-                include: {
-                  class: {
-                    select: { id: true, name: true, displayNameArabic: true, gradeLevel: true },
-                  },
-                },
-              },
-              teacherProfile: {
-                include: {
-                  subjects: true,
-                  classes: true,
-                },
-              },
-            },
+            include: this.userProfileIncludes,
           },
         },
       });
@@ -183,7 +148,7 @@ export class AuthService {
       }
     }
 
-    // 4. Validate existence and password
+    // 3. User verification
     if (!user) {
       throw AppError.unauthorized('بيانات الدخول غير صحيحة');
     }
@@ -192,20 +157,15 @@ export class AuthService {
       throw AppError.forbidden('تم تعطيل هذا الحساب. يرجى التواصل مع إدارة المدرسة.');
     }
 
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
+    // 4. Password verification
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
       throw AppError.unauthorized('بيانات الدخول غير صحيحة');
     }
 
-    // 5. Determine profile data
-    const profile =
-      user.role === 'STUDENT'
-        ? user.studentProfile
-        : user.role === 'TEACHER'
-        ? user.teacherProfile
-        : null;
+    const resolvedProfile = user.studentProfile || user.teacherProfile || null;
 
-    // 6. Flow Differentiation based on forcePasswordChange
+    // 5. Flow Differentiation: First-time login requiring password change
     if (user.forcePasswordChange === true) {
       const tempToken = this.signTempToken({ id: user.id, role: user.role });
 
@@ -214,10 +174,16 @@ export class AuthService {
         requirePasswordChange: true,
         tempToken,
         message: 'يرجى تعيين كلمة مرور جديدة لتفعيل الحساب',
+        user: {
+          id: user.id,
+          fullName: user.name,
+          role: user.role,
+        },
       };
     }
 
-    const token = this.signStandardToken({ id: user.id, role: user.role });
+    // 6. Standard Login Flow
+    const token = this.signToken({ id: user.id, role: user.role }, '7d');
 
     return {
       status: 'success',
@@ -226,36 +192,23 @@ export class AuthService {
       user: {
         id: user.id,
         fullName: user.name,
-        email: user.email,
         role: user.role,
-        profile,
+        profile: resolvedProfile,
       },
     };
   }
 
   /**
-   * Set Initial Password (for users with forcePasswordChange === true)
+   * Set Initial Password
+   * Updates password, sets forcePasswordChange = false, returns standard full JWT
+   *
    * @param {string} userId
    * @param {string} newPassword
    */
   static async setInitialPassword(userId, newPassword) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      include: {
-        studentProfile: {
-          include: {
-            class: {
-              select: { id: true, name: true, displayNameArabic: true, gradeLevel: true },
-            },
-          },
-        },
-        teacherProfile: {
-          include: {
-            subjects: true,
-            classes: true,
-          },
-        },
-      },
+      include: this.userProfileIncludes,
     });
 
     if (!user) {
@@ -269,62 +222,17 @@ export class AuthService {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(newPassword, salt);
 
-    let updatedUser;
-    try {
-      updatedUser = await prisma.user.update({
-        where: { id: userId },
-        data: {
-          password: hashedPassword,
-          forcePasswordChange: false,
-        },
-        include: {
-          studentProfile: {
-            include: {
-              class: {
-                select: { id: true, name: true, displayNameArabic: true, gradeLevel: true },
-              },
-            },
-          },
-          teacherProfile: {
-            include: {
-              subjects: true,
-              classes: true,
-            },
-          },
-        },
-      });
-    } catch {
-      updatedUser = await prisma.user.update({
-        where: { id: userId },
-        data: {
-          password: hashedPassword,
-        },
-        include: {
-          studentProfile: {
-            include: {
-              class: {
-                select: { id: true, name: true, displayNameArabic: true, gradeLevel: true },
-              },
-            },
-          },
-          teacherProfile: {
-            include: {
-              subjects: true,
-              classes: true,
-            },
-          },
-        },
-      });
-      updatedUser.forcePasswordChange = false;
-    }
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        password: hashedPassword,
+        forcePasswordChange: false,
+      },
+      include: this.userProfileIncludes,
+    });
 
-    const token = this.signStandardToken({ id: updatedUser.id, role: updatedUser.role });
-    const profile =
-      updatedUser.role === 'STUDENT'
-        ? updatedUser.studentProfile
-        : updatedUser.role === 'TEACHER'
-        ? updatedUser.teacherProfile
-        : null;
+    const token = this.signToken({ id: updatedUser.id, role: updatedUser.role }, '7d');
+    const resolvedProfile = updatedUser.studentProfile || updatedUser.teacherProfile || null;
 
     return {
       status: 'success',
@@ -333,47 +241,28 @@ export class AuthService {
       user: {
         id: updatedUser.id,
         fullName: updatedUser.name,
-        email: updatedUser.email,
         role: updatedUser.role,
-        profile,
+        profile: resolvedProfile,
       },
     };
   }
 
   /**
-   * Get Current Authenticated User Session
+   * Session Introspection: Get Current Authenticated User Session
+   *
    * @param {string} userId
    */
-  static async getMe(userId) {
+  static async getCurrentUser(userId) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      include: {
-        studentProfile: {
-          include: {
-            class: {
-              select: { id: true, name: true, displayNameArabic: true, gradeLevel: true },
-            },
-          },
-        },
-        teacherProfile: {
-          include: {
-            subjects: true,
-            classes: true,
-          },
-        },
-      },
+      include: this.userProfileIncludes,
     });
 
     if (!user) {
       throw AppError.notFound('المستخدم غير موجود');
     }
 
-    const profile =
-      user.role === 'STUDENT'
-        ? user.studentProfile
-        : user.role === 'TEACHER'
-        ? user.teacherProfile
-        : null;
+    const resolvedProfile = user.studentProfile || user.teacherProfile || null;
 
     return {
       id: user.id,
@@ -382,8 +271,15 @@ export class AuthService {
       role: user.role,
       phone: user.phone,
       isActive: user.isActive,
-      profile,
+      profile: resolvedProfile,
     };
+  }
+
+  /**
+   * Alias for getCurrentUser
+   */
+  static async getMe(userId) {
+    return this.getCurrentUser(userId);
   }
 }
 
