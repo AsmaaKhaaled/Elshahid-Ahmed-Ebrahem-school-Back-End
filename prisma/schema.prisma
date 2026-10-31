@@ -43,7 +43,8 @@ model User {
   status              UserStatus @default(ACTIVE)
   forcePasswordChange Boolean    @default(false)
   phone               String?
-  
+  jobTitle            String?    // المسمى الوظيفي للمسؤول (مثال: وكيل شؤون الطلاب)
+
   // صلاحيات المسؤول الفرعي:
   permissions         String[]   @default([])
 

@@ -12,9 +12,9 @@ async function startServer() {
     // Start HTTP Server
     server = app.listen(env.PORT, () => {
       console.log(`======================================================`);
-      console.log(`🚀 Server is running in ${env.NODE_ENV} mode`);
-      console.log(`📡 URL: http://localhost:${env.PORT}`);
-      console.log(`🩺 Health Check: http://localhost:${env.PORT}/api/health`);
+      console.log(`Server is running in ${env.NODE_ENV} mode`);
+      console.log(`URL: http://localhost:${env.PORT}`);
+      console.log(`Health Check: http://localhost:${env.PORT}/api/health`);
       console.log(`======================================================`);
     });
   } catch (error) {

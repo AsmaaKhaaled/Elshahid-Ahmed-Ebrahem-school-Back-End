@@ -16,16 +16,50 @@ export class AdminService {
       status: true,
       permissions: true,
       phone: true,
+      jobTitle: true,
       createdAt: true,
       updatedAt: true,
     };
   }
 
   /**
-   * Get all Sub-Admins
+   * Optional text fields: '' or null clears them, undefined leaves them as they are
+   */
+  static optionalText(value) {
+    if (value === undefined) return undefined;
+    const trimmed = typeof value === 'string' ? value.trim() : '';
+    return trimmed || null;
+  }
+
+  /**
+   * Throws 409 when the national ID or email already belongs to another user
+   */
+  static async assertUniqueIdentity({ nationalId, email }, exceptId) {
+    const conditions = [];
+    if (nationalId) conditions.push({ nationalId });
+    if (email) conditions.push({ email });
+    if (conditions.length === 0) return;
+
+    const existing = await prisma.user.findFirst({
+      where: {
+        OR: conditions,
+        ...(exceptId && { NOT: { id: exceptId } }),
+      },
+      select: { nationalId: true, email: true },
+    });
+
+    if (!existing) return;
+    if (nationalId && existing.nationalId === nationalId) {
+      throw AppError.conflict('الرقم القومي مسجل بالفعل لمستخدم آخر');
+    }
+    throw AppError.conflict('البريد الإلكتروني مسجل بالفعل لمستخدم آخر');
+  }
+
+  /**
+   * Get all school administration accounts (the Super Admin first, then Sub-Admins)
    */
   static async getAllAdmins(query = {}) {
-    const where = { role: 'ADMIN' };
+    const where = { role: { in: ['SUPER_ADMIN', 'ADMIN'] } };
 
     if (query.status) {
       where.status = query.status.toUpperCase();
@@ -40,11 +74,16 @@ export class AdminService {
       ];
     }
 
-    return prisma.user.findMany({
+    const admins = await prisma.user.findMany({
       where,
-      select: this.adminSelectFields,
+      select: { ...this.adminSelectFields, name: true },
       orderBy: { createdAt: 'desc' },
     });
+
+    // Sorted here: SUPER_ADMIN was appended to the Role enum, so the DB orders it last
+    return admins
+      .map(({ name, ...admin }) => ({ ...admin, fullName: admin.fullName || name || '' }))
+      .sort((a, b) => (b.role === 'SUPER_ADMIN') - (a.role === 'SUPER_ADMIN'));
   }
 
   /**
@@ -67,24 +106,11 @@ export class AdminService {
    * Create a new Sub-Admin
    */
   static async createAdmin(data) {
-    const email = data.email.trim().toLowerCase();
+    // Email is optional - admins sign in with their national ID
+    const email = this.optionalText(data.email)?.toLowerCase() ?? null;
     const nationalId = data.nationalId.trim();
 
-    // Check uniqueness
-    const existing = await prisma.user.findFirst({
-      where: {
-        OR: [{ email }, { nationalId }],
-      },
-    });
-
-    if (existing) {
-      if (existing.email === email) {
-        throw AppError.conflict('البريد الإلكتروني مسجل بالفعل لمستخدم آخر');
-      }
-      if (existing.nationalId === nationalId) {
-        throw AppError.conflict('الرقم القومي مسجل بالفعل لمستخدم آخر');
-      }
-    }
+    await this.assertUniqueIdentity({ nationalId, email });
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(data.password, salt);
@@ -100,12 +126,44 @@ export class AdminService {
         status: 'ACTIVE',
         forcePasswordChange: false,
         permissions: Array.isArray(data.permissions) ? data.permissions : [],
-        phone: data.phone?.trim() || null,
+        phone: this.optionalText(data.phone) ?? null,
+        jobTitle: this.optionalText(data.jobTitle) ?? null,
       },
       select: this.adminSelectFields,
     });
 
     return newAdmin;
+  }
+
+  /**
+   * Update Sub-Admin profile (name, national ID, email, phone, job title)
+   */
+  static async updateAdmin(id, data) {
+    const admin = await prisma.user.findFirst({
+      where: { id, role: 'ADMIN' },
+    });
+
+    if (!admin) {
+      throw AppError.notFound(`المسؤول ذو المعرف '${id}' غير موجود`);
+    }
+
+    const nationalId = data.nationalId?.trim();
+    const email = this.optionalText(data.email)?.toLowerCase();
+
+    await this.assertUniqueIdentity({ nationalId, email }, id);
+
+    const fullName = data.fullName?.trim();
+    return prisma.user.update({
+      where: { id },
+      data: {
+        ...(fullName && { fullName, name: fullName }),
+        ...(nationalId && { nationalId }),
+        ...(data.email !== undefined && { email: email ?? null }),
+        phone: this.optionalText(data.phone),
+        jobTitle: this.optionalText(data.jobTitle),
+      },
+      select: this.adminSelectFields,
+    });
   }
 
   /**

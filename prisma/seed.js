@@ -91,20 +91,12 @@ async function main() {
 
   // ==========================================
   // 3. Seed Super Admin (مدير المدرسة)
+  // Created once only: the principal edits their own details & password from
+  // "بيانات الحساب", so re-running the seed must never reset them.
   // ==========================================
-  const superAdmin = await prisma.user.upsert({
-    where: { email: 'admin@school.com' },
-    update: {
-      fullName: 'أ. د. محمود عبد العزيز الشناوي',
-      name: 'أ. د. محمود عبد العزيز الشناوي',
-      nationalId: '28001011234567',
-      password: adminPasswordHash,
-      role: 'SUPER_ADMIN',
-      status: 'ACTIVE',
-      forcePasswordChange: false,
-      permissions: [],
-    },
-    create: {
+  const existingSuperAdmin = await prisma.user.findFirst({ where: { role: 'SUPER_ADMIN' } });
+  const superAdmin = existingSuperAdmin ?? await prisma.user.create({
+    data: {
       fullName: 'أ. د. محمود عبد العزيز الشناوي',
       name: 'أ. د. محمود عبد العزيز الشناوي',
       email: 'admin@school.com',
@@ -117,7 +109,11 @@ async function main() {
       permissions: [],
     },
   });
-  console.log(`✅ Super Admin Account seeded: [${superAdmin.fullName}] | Email: ${superAdmin.email} | NationalID: ${superAdmin.nationalId}`);
+  console.log(
+    existingSuperAdmin
+      ? `ℹ️ Super Admin already exists, left unchanged: [${superAdmin.fullName}]`
+      : `✅ Super Admin Account seeded: [${superAdmin.fullName}] | Email: ${superAdmin.email} | NationalID: ${superAdmin.nationalId}`
+  );
 
   // ==========================================
   // 4. Seed Sub-Admin 1: شؤون الطلاب

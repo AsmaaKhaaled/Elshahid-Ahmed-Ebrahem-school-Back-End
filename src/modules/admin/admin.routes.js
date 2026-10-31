@@ -18,6 +18,7 @@ router.post(['/admins', '/'], validate(adminValidation.createAdmin), AdminContro
 
 // Single admin detail, permissions, status, password reset, deletion
 router.get(['/admins/:id', '/:id'], AdminController.getAdminById);
+router.patch(['/admins/:id', '/:id'], validate(adminValidation.updateAdmin), AdminController.updateAdmin);
 router.patch(
   ['/admins/:id/permissions', '/:id/permissions'],
   validate(adminValidation.updatePermissions),

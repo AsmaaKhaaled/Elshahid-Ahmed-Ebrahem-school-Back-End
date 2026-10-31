@@ -1,8 +1,10 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import swaggerUi from 'swagger-ui-express';
 
 import { env } from './config/env.js';
+import { swaggerSpec } from './docs/swagger.js';
 import { errorHandler, notFoundHandler } from './middlewares/error.middleware.js';
 import { ApiResponse } from './shared/utils/api-response.js';
 
@@ -22,11 +24,26 @@ import adminRoutes from './modules/admin/admin.routes.js';
 
 const app = express();
 
+// API Documentation (mounted before helmet so its CSP doesn't block the Swagger UI assets)
+app.get('/api/docs.json', (req, res) => res.json(swaggerSpec));
+app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, { swaggerOptions: { persistAuthorization: true } }));
+
 // Security and utility middlewares
 app.use(helmet());
+// CLIENT_URL may hold several comma-separated origins.
+// In development, any localhost port is allowed (ng serve may pick a random port).
+const allowedOrigins = env.CLIENT_URL.split(',').map((origin) => origin.trim());
+const localhostPattern = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+
 app.use(
   cors({
-    origin: env.CLIENT_URL || '*',
+    origin: (origin, callback) => {
+      const allowed =
+        !origin ||
+        allowedOrigins.includes(origin) ||
+        (env.NODE_ENV === 'development' && localhostPattern.test(origin));
+      callback(null, allowed);
+    },
     credentials: true,
   })
 );

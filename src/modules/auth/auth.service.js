@@ -155,14 +155,15 @@ export class AuthService {
       throw AppError.unauthorized('بيانات الدخول غير صحيحة');
     }
 
-    if (user.status !== 'ACTIVE') {
-      throw AppError.forbidden('تم تجميد أو تعطيل هذا الحساب. يرجى التواصل مع إدارة النظام.');
-    }
-
-    // 4. Password verification
+    // 4. Password verification - before the status check, so a suspended account
+    // is only revealed to someone who knows its password
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
       throw AppError.unauthorized('بيانات الدخول غير صحيحة');
+    }
+
+    if (user.status !== 'ACTIVE') {
+      throw AppError.forbidden('تم تجميد أو تعطيل هذا الحساب. يرجى التواصل مع إدارة النظام.');
     }
 
     const resolvedProfile = user.studentProfile || user.teacherProfile || null;
@@ -286,8 +287,106 @@ export class AuthService {
       status: user.status,
       permissions: user.permissions || [],
       phone: user.phone,
+      jobTitle: user.jobTitle,
       profile: resolvedProfile,
     };
+  }
+
+  /**
+   * Update Own Profile (school administration accounts)
+   * Changing the login identifiers (national ID / email) requires the current password,
+   * so an unattended open session can't take the account over.
+   *
+   * @param {string} userId
+   * @param {Object} data { fullName?, nationalId?, email?, phone?, jobTitle?, currentPassword? }
+   */
+  static async updateProfile(userId, data) {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw AppError.notFound('المستخدم غير موجود');
+    }
+
+    const optionalText = (value) => {
+      if (value === undefined) return undefined;
+      const trimmed = typeof value === 'string' ? value.trim() : '';
+      return trimmed || null;
+    };
+
+    const nationalId = data.nationalId?.trim();
+    const email = data.email === undefined ? undefined : optionalText(data.email)?.toLowerCase() ?? null;
+    const nationalIdChanged = nationalId !== undefined && nationalId !== user.nationalId;
+    const emailChanged = email !== undefined && email !== user.email;
+
+    if (nationalIdChanged || emailChanged) {
+      const isPasswordValid = data.currentPassword && (await bcrypt.compare(data.currentPassword, user.password));
+      if (!isPasswordValid) {
+        throw AppError.badRequest('كلمة المرور الحالية غير صحيحة');
+      }
+
+      const conditions = [];
+      if (nationalIdChanged) conditions.push({ nationalId });
+      if (emailChanged && email) conditions.push({ email });
+      if (conditions.length) {
+        const existing = await prisma.user.findFirst({
+          where: { OR: conditions, NOT: { id: userId } },
+          select: { nationalId: true },
+        });
+        if (existing) {
+          throw AppError.conflict(
+            nationalIdChanged && existing.nationalId === nationalId
+              ? 'الرقم القومي مسجل بالفعل لمستخدم آخر'
+              : 'البريد الإلكتروني مسجل بالفعل لمستخدم آخر'
+          );
+        }
+      }
+    }
+
+    // A sign-in identifier must remain: national ID or email
+    if ((nationalIdChanged ? nationalId : user.nationalId) === null && (emailChanged ? email : user.email) === null) {
+      throw AppError.badRequest('يجب أن يبقى للحساب رقم قومي أو بريد إلكتروني لتسجيل الدخول');
+    }
+
+    const fullName = data.fullName?.trim();
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(fullName && { fullName, name: fullName }),
+        ...(nationalIdChanged && { nationalId }),
+        ...(emailChanged && { email }),
+        phone: optionalText(data.phone),
+        jobTitle: optionalText(data.jobTitle),
+      },
+    });
+
+    return this.getCurrentUser(userId);
+  }
+
+  /**
+   * Change Own Password (needs the current one)
+   *
+   * @param {string} userId
+   * @param {string} currentPassword
+   * @param {string} newPassword
+   */
+  static async changePassword(userId, currentPassword, newPassword) {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw AppError.notFound('المستخدم غير موجود');
+    }
+
+    const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
+    if (!isPasswordValid) {
+      throw AppError.badRequest('كلمة المرور الحالية غير صحيحة');
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+    await prisma.user.update({
+      where: { id: userId },
+      data: { password: hashedPassword, forcePasswordChange: false },
+    });
+
+    return { status: 'success', message: 'تم تغيير كلمة المرور بنجاح' };
   }
 
   /**

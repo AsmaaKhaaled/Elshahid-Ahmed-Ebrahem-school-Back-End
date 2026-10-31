@@ -49,6 +49,22 @@ export class AdminController {
   }
 
   /**
+   * PATCH /api/v1/admin/admins/:id
+   */
+  static async updateAdmin(req, res, next) {
+    try {
+      const updatedAdmin = await AdminService.updateAdmin(req.params.id, req.body);
+      return res.status(200).json({
+        status: 'success',
+        message: 'تم تحديث بيانات المسؤول بنجاح',
+        data: { admin: updatedAdmin },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * PATCH /api/v1/admin/admins/:id/permissions
    */
   static async updatePermissions(req, res, next) {
