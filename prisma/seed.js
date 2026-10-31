@@ -8,6 +8,7 @@ async function main() {
 
   const SALT_ROUNDS = 10;
   const adminPasswordHash = await bcrypt.hash('Admin@2026', SALT_ROUNDS);
+  const staffPasswordHash = await bcrypt.hash('Staff@2026', SALT_ROUNDS);
   const teacherPasswordHash = await bcrypt.hash('Teacher@2026', SALT_ROUNDS);
   const studentPasswordHash = await bcrypt.hash('Student@2026', SALT_ROUNDS);
 
@@ -89,33 +90,97 @@ async function main() {
   console.log(`✅ Subject ready: ${mathSubject.nameArabic} (${mathSubject.code})`);
 
   // ==========================================
-  // 3. Seed Admin User
+  // 3. Seed Super Admin (مدير المدرسة)
   // ==========================================
-  const adminUser = await prisma.user.upsert({
+  const superAdmin = await prisma.user.upsert({
     where: { email: 'admin@school.com' },
     update: {
-      name: 'إدارة المدرسة (School Admin)',
-      identifier: 'admin@school.com',
+      fullName: 'أ. د. محمود عبد العزيز الشناوي',
+      name: 'أ. د. محمود عبد العزيز الشناوي',
+      nationalId: '28001011234567',
       password: adminPasswordHash,
-      role: 'ADMIN',
+      role: 'SUPER_ADMIN',
+      status: 'ACTIVE',
       forcePasswordChange: false,
-      isActive: true,
+      permissions: [],
     },
     create: {
-      name: 'إدارة المدرسة (School Admin)',
+      fullName: 'أ. د. محمود عبد العزيز الشناوي',
+      name: 'أ. د. محمود عبد العزيز الشناوي',
       email: 'admin@school.com',
-      identifier: 'admin@school.com',
+      nationalId: '28001011234567',
       password: adminPasswordHash,
-      role: 'ADMIN',
+      role: 'SUPER_ADMIN',
+      status: 'ACTIVE',
       phone: '01000000001',
       forcePasswordChange: false,
-      isActive: true,
+      permissions: [],
     },
   });
-  console.log(`✅ Admin Account: Identifier = ${adminUser.identifier} | Pass = Admin@2026 | forceChange = false`);
+  console.log(`✅ Super Admin Account seeded: [${superAdmin.fullName}] | Email: ${superAdmin.email} | NationalID: ${superAdmin.nationalId}`);
 
   // ==========================================
-  // 4. Seed Teacher: أ/ نشوه يوسف محمد يوسف
+  // 4. Seed Sub-Admin 1: شؤون الطلاب
+  // ==========================================
+  const studentAffairsAdmin = await prisma.user.upsert({
+    where: { email: 'student.affairs@school.com' },
+    update: {
+      fullName: 'أ. محمد سعيد حسن',
+      name: 'أ. محمد سعيد حسن',
+      nationalId: '27805121234561',
+      password: staffPasswordHash,
+      role: 'ADMIN',
+      status: 'ACTIVE',
+      forcePasswordChange: false,
+      permissions: ['students', 'classes', 'attendance-stats', 'announcements'],
+    },
+    create: {
+      fullName: 'أ. محمد سعيد حسن',
+      name: 'أ. محمد سعيد حسن',
+      email: 'student.affairs@school.com',
+      nationalId: '27805121234561',
+      password: staffPasswordHash,
+      role: 'ADMIN',
+      status: 'ACTIVE',
+      phone: '01000000002',
+      forcePasswordChange: false,
+      permissions: ['students', 'classes', 'attendance-stats', 'announcements'],
+    },
+  });
+  console.log(`✅ Admin 1 (شؤون الطلاب) seeded: [${studentAffairsAdmin.fullName}] | Permissions: ${studentAffairsAdmin.permissions.join(', ')}`);
+
+  // ==========================================
+  // 5. Seed Sub-Admin 2: شؤون العاملين
+  // ==========================================
+  const teachersAffairsAdmin = await prisma.user.upsert({
+    where: { email: 'teachers.affairs@school.com' },
+    update: {
+      fullName: 'أ. أحمد فتحي عبد العظيم',
+      name: 'أ. أحمد فتحي عبد العظيم',
+      nationalId: '28210201234562',
+      password: staffPasswordHash,
+      role: 'ADMIN',
+      status: 'ACTIVE',
+      forcePasswordChange: false,
+      permissions: ['teachers', 'teacher-attendance'],
+    },
+    create: {
+      fullName: 'أ. أحمد فتحي عبد العظيم',
+      name: 'أ. أحمد فتحي عبد العظيم',
+      email: 'teachers.affairs@school.com',
+      nationalId: '28210201234562',
+      password: staffPasswordHash,
+      role: 'ADMIN',
+      status: 'ACTIVE',
+      phone: '01000000003',
+      forcePasswordChange: false,
+      permissions: ['teachers', 'teacher-attendance'],
+    },
+  });
+  console.log(`✅ Admin 2 (شؤون العاملين) seeded: [${teachersAffairsAdmin.fullName}] | Permissions: ${teachersAffairsAdmin.permissions.join(', ')}`);
+
+  // ==========================================
+  // 6. Seed Teacher: أ/ نشوه يوسف محمد يوسف
   // ==========================================
   const teacherNationalId = '28901222800962';
   const teacherEmail = 'teacher.neshwa@school.com';
@@ -123,22 +188,26 @@ async function main() {
   const teacherUser = await prisma.user.upsert({
     where: { email: teacherEmail },
     update: {
+      fullName: 'نشوه يوسف محمد يوسف',
       name: 'نشوه يوسف محمد يوسف',
-      identifier: teacherNationalId,
+      nationalId: teacherNationalId,
       password: teacherPasswordHash,
       role: 'TEACHER',
+      status: 'ACTIVE',
       forcePasswordChange: true,
-      isActive: true,
+      permissions: [],
     },
     create: {
+      fullName: 'نشوه يوسف محمد يوسف',
       name: 'نشوه يوسف محمد يوسف',
       email: teacherEmail,
-      identifier: teacherNationalId,
+      nationalId: teacherNationalId,
       password: teacherPasswordHash,
       role: 'TEACHER',
+      status: 'ACTIVE',
       phone: '01012345678',
       forcePasswordChange: true,
-      isActive: true,
+      permissions: [],
     },
   });
 
@@ -182,11 +251,11 @@ async function main() {
       subjects: true,
     },
   });
-  console.log(`✅ Teacher Account (أ/ نشوه): Identifier = ${teacherUser.identifier} | Pass = Teacher@2026`);
+  console.log(`✅ Teacher Account (أ/ نشوه): NationalID = ${teacherUser.nationalId} | Pass = Teacher@2026`);
   console.log(`   📚 فصول المعلمة نشوه (${teacherProfile.classes.length} فصول): ${teacherProfile.classes.map((c) => c.displayNameArabic).join(' ، ')}`);
 
   // ==========================================
-  // 5. Seed Student (طالب مقيد بفصل 3/2 التابع للمعلمة)
+  // 7. Seed Student (طالب مقيد بفصل 3/2)
   // ==========================================
   const studentCode = 'STU-2026-001';
   const studentEmail = 'student.omar@school.com';
@@ -194,22 +263,28 @@ async function main() {
   const studentUser = await prisma.user.upsert({
     where: { email: studentEmail },
     update: {
+      fullName: 'عمر طارق حسن',
       name: 'عمر طارق حسن',
-      identifier: studentCode,
+      studentCode,
+      nationalId: '30805121234567',
       password: studentPasswordHash,
       role: 'STUDENT',
+      status: 'ACTIVE',
       forcePasswordChange: true,
-      isActive: true,
+      permissions: [],
     },
     create: {
+      fullName: 'عمر طارق حسن',
       name: 'عمر طارق حسن',
       email: studentEmail,
-      identifier: studentCode,
+      studentCode,
+      nationalId: '30805121234567',
       password: studentPasswordHash,
       role: 'STUDENT',
+      status: 'ACTIVE',
       phone: '01234567890',
       forcePasswordChange: true,
-      isActive: true,
+      permissions: [],
     },
   });
 
@@ -235,9 +310,9 @@ async function main() {
       isActive: true,
     },
   });
-  console.log(`✅ Student Account (عمر طارق): Identifier = ${studentUser.identifier} | Pass = Student@2026 | Class = ${class3_2.displayNameArabic}`);
+  console.log(`✅ Student Account (عمر طارق): StudentCode = ${studentUser.studentCode} | Pass = Student@2026 | Class = ${class3_2.displayNameArabic}`);
 
-  console.log('\n🎉 Database updated successfully with teacher Neshwa\'s exact classes!');
+  console.log('\n🎉 Database seeding with Roles & Permissions completed successfully!');
 }
 
 main()

@@ -2,6 +2,23 @@ import bcrypt from 'bcryptjs';
 import { prisma } from '../../config/database.js';
 
 export class UserModel {
+  static get userSelectFields() {
+    return {
+      id: true,
+      fullName: true,
+      name: true,
+      email: true,
+      nationalId: true,
+      studentCode: true,
+      role: true,
+      status: true,
+      permissions: true,
+      phone: true,
+      createdAt: true,
+      updatedAt: true,
+    };
+  }
+
   static async findAll({ role, search } = {}) {
     const where = {};
 
@@ -11,23 +28,16 @@ export class UserModel {
 
     if (search) {
       where.OR = [
+        { fullName: { contains: search, mode: 'insensitive' } },
         { name: { contains: search, mode: 'insensitive' } },
         { email: { contains: search, mode: 'insensitive' } },
+        { nationalId: { contains: search, mode: 'insensitive' } },
       ];
     }
 
     return prisma.user.findMany({
       where,
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        phone: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true,
-      },
+      select: this.userSelectFields,
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -35,16 +45,7 @@ export class UserModel {
   static async findById(id) {
     return prisma.user.findUnique({
       where: { id },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        phone: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true,
-      },
+      select: this.userSelectFields,
     });
   }
 
@@ -63,25 +64,22 @@ export class UserModel {
   static async create(data) {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(data.password, salt);
+    const fullName = data.fullName || data.name;
 
     return prisma.user.create({
       data: {
-        name: data.name,
-        email: data.email.toLowerCase(),
+        fullName,
+        name: fullName,
+        email: data.email ? data.email.toLowerCase() : null,
+        nationalId: data.nationalId || null,
+        studentCode: data.studentCode || null,
         password: hashedPassword,
         role: data.role || 'STUDENT',
+        status: data.status || 'ACTIVE',
         phone: data.phone || null,
+        permissions: Array.isArray(data.permissions) ? data.permissions : [],
       },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        phone: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true,
-      },
+      select: this.userSelectFields,
     });
   }
 
@@ -97,19 +95,16 @@ export class UserModel {
       updateData.email = updateData.email.toLowerCase();
     }
 
+    if (updateData.fullName && !updateData.name) {
+      updateData.name = updateData.fullName;
+    } else if (updateData.name && !updateData.fullName) {
+      updateData.fullName = updateData.name;
+    }
+
     return prisma.user.update({
       where: { id },
       data: updateData,
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        phone: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true,
-      },
+      select: this.userSelectFields,
     });
   }
 
@@ -120,16 +115,7 @@ export class UserModel {
     return prisma.user.update({
       where: { id },
       data: { password: hashedPassword },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        phone: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true,
-      },
+      select: this.userSelectFields,
     });
   }
 

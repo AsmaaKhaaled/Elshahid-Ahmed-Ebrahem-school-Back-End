@@ -18,6 +18,7 @@ import materialsRoutes from './modules/materials/materials.routes.js';
 import attendanceRoutes from './modules/attendance/attendance.routes.js';
 import gradesRoutes from './modules/grades/grades.routes.js';
 import announcementsRoutes from './modules/announcements/announcements.routes.js';
+import adminRoutes from './modules/admin/admin.routes.js';
 
 const app = express();
 
@@ -81,6 +82,8 @@ app.use(`${API_PREFIX}/materials`, materialsRoutes);
 app.use(`${API_PREFIX}/attendance`, attendanceRoutes);
 app.use(`${API_PREFIX}/grades`, gradesRoutes);
 app.use(`${API_PREFIX}/announcements`, announcementsRoutes);
+app.use(`${API_PREFIX}/admin/admins`, adminRoutes);
+app.use(`${API_PREFIX}/admin`, adminRoutes);
 
 // 404 Handler for undefined routes
 app.use(notFoundHandler);

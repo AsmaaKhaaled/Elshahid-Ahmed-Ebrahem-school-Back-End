@@ -10,6 +10,10 @@ export const authorize = (...roles) => {
       return next(AppError.unauthorized('User is not authenticated'));
     }
 
+    if (req.user.role === 'SUPER_ADMIN') {
+      return next();
+    }
+
     if (!roles.includes(req.user.role)) {
       return next(
         AppError.forbidden(`Access forbidden: requires one of [${roles.join(', ')}] roles`)

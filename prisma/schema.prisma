@@ -13,10 +13,17 @@ datasource db {
 // ==========================================
 
 enum Role {
+  SUPER_ADMIN
   ADMIN
   TEACHER
   STUDENT
   PARENT
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
 }
 
 enum Gender {
@@ -25,21 +32,24 @@ enum Gender {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  name      String
-  email     String   @unique
-  password  String
-  role      Role     @default(STUDENT)
+  id                  String     @id @default(uuid())
+  nationalId          String?    @unique // الرقم القومي (14 رقم)
+  studentCode         String?    @unique // كود الطالب
+  email               String?    @unique // إيميل المدير أو المعلم
+  fullName            String     @default("")
+  name                String?
+  password            String     // Bcrypt Hashed Password
+  role                Role       @default(STUDENT)
+  status              UserStatus @default(ACTIVE)
+  forcePasswordChange Boolean    @default(false)
   phone               String?
-  identifier          String?  @unique
-  forcePasswordChange Boolean  @default(false)
-  isActive            Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  
+  // صلاحيات المسؤول الفرعي:
+  permissions         String[]   @default([])
 
   // Profile Relations
-  studentProfile Student?
-  teacherProfile Teacher?
+  studentProfile      Student?
+  teacherProfile      Teacher?
 
   // Operational Relations
   recordedAttendances   Attendance[]   @relation("AttendanceRecorder")
@@ -48,6 +58,12 @@ model User {
   uploadedMaterials     Material[]     @relation("MaterialUploader")
   authoredAnnouncements Announcement[] @relation("AnnouncementAuthor")
 
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+
+  @@index([email])
+  @@index([nationalId])
+  @@index([studentCode])
   @@map("users")
 }
 

@@ -71,8 +71,9 @@ export class AuthService {
   /**
    * Unified Login Endpoint Logic
    * Accepts { identifier, password }
-   * - Queries prisma.user where identifier matches and isActive is true
+   * - Queries prisma.user where email, nationalId, or studentCode matches
    * - Verifies bcrypt password
+   * - Verifies status === 'ACTIVE'
    * - Checks forcePasswordChange:
    *     If true: returns tempToken (15m) and restricted payload
    *     If false: returns standard token (7d) and loaded profile
@@ -96,12 +97,13 @@ export class AuthService {
 
     const trimmedIdentifier = identifier.trim();
 
-    // 1. Primary lookup: query prisma.user by identifier (or email) where isActive is true
+    // 1. Primary lookup: query prisma.user by email, nationalId, or studentCode
     let user = await prisma.user.findFirst({
       where: {
         OR: [
-          { identifier: trimmedIdentifier },
           { email: trimmedIdentifier.toLowerCase() },
+          { nationalId: trimmedIdentifier },
+          { studentCode: trimmedIdentifier },
         ],
       },
       include: this.userProfileIncludes,
@@ -153,8 +155,8 @@ export class AuthService {
       throw AppError.unauthorized('بيانات الدخول غير صحيحة');
     }
 
-    if (!user.isActive) {
-      throw AppError.forbidden('تم تعطيل هذا الحساب. يرجى التواصل مع إدارة المدرسة.');
+    if (user.status !== 'ACTIVE') {
+      throw AppError.forbidden('تم تجميد أو تعطيل هذا الحساب. يرجى التواصل مع إدارة النظام.');
     }
 
     // 4. Password verification
@@ -176,7 +178,7 @@ export class AuthService {
         message: 'يرجى تعيين كلمة مرور جديدة لتفعيل الحساب',
         user: {
           id: user.id,
-          fullName: user.name,
+          fullName: user.fullName || user.name,
           role: user.role,
         },
       };
@@ -191,8 +193,13 @@ export class AuthService {
       token,
       user: {
         id: user.id,
-        fullName: user.name,
+        fullName: user.fullName || user.name,
+        email: user.email,
+        nationalId: user.nationalId,
+        studentCode: user.studentCode,
         role: user.role,
+        status: user.status,
+        permissions: user.permissions || [],
         profile: resolvedProfile,
       },
     };
@@ -240,8 +247,13 @@ export class AuthService {
       token,
       user: {
         id: updatedUser.id,
-        fullName: updatedUser.name,
+        fullName: updatedUser.fullName || updatedUser.name,
+        email: updatedUser.email,
+        nationalId: updatedUser.nationalId,
+        studentCode: updatedUser.studentCode,
         role: updatedUser.role,
+        status: updatedUser.status,
+        permissions: updatedUser.permissions || [],
         profile: resolvedProfile,
       },
     };
@@ -266,11 +278,14 @@ export class AuthService {
 
     return {
       id: user.id,
-      fullName: user.name,
+      fullName: user.fullName || user.name,
       email: user.email,
+      nationalId: user.nationalId,
+      studentCode: user.studentCode,
       role: user.role,
+      status: user.status,
+      permissions: user.permissions || [],
       phone: user.phone,
-      isActive: user.isActive,
       profile: resolvedProfile,
     };
   }

@@ -7,8 +7,9 @@ export class AuthModel {
     return prisma.user.findFirst({
       where: {
         OR: [
-          { identifier: trimmed },
           { email: trimmed.toLowerCase() },
+          { nationalId: trimmed },
+          { studentCode: trimmed },
         ],
       },
     });
