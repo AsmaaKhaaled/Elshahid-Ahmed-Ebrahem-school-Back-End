@@ -1,5 +1,6 @@
 import { StudentsService } from './students.service.js';
 import { ApiResponse } from '../../shared/utils/api-response.js';
+import { AppError } from '../../shared/errors/app-error.js';
 
 export class StudentsController {
   static async getAll(req, res, next) {
@@ -83,6 +84,35 @@ export class StudentsController {
       const { students } = req.body;
       const result = await StudentsService.bulkImportStudents(students);
       return ApiResponse.created(res, result, 'تم استيراد بيانات الطلاب بنجاح');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async uploadExcel(req, res, next) {
+    try {
+      if (!req.file || !req.file.buffer) {
+        throw AppError.badRequest('يرجى اختيار وإرفاق ملف إكسيل (.xlsx, .xls, .csv)');
+      }
+      const result = await StudentsService.importFromExcel(req.file.buffer);
+      return ApiResponse.created(res, result, 'تم استيراد ومعالجة ملف الإكسيل بنجاح');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async downloadTemplate(req, res, next) {
+    try {
+      const buffer = StudentsService.generateExcelTemplate();
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      );
+      res.setHeader(
+        'Content-Disposition',
+        'attachment; filename="students_template.xlsx"'
+      );
+      return res.send(buffer);
     } catch (error) {
       next(error);
     }

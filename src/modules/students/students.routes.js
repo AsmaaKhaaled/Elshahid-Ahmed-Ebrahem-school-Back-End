@@ -4,13 +4,19 @@ import { studentsValidation } from './students.validation.js';
 import { validate } from '../../middlewares/validate.middleware.js';
 import { authenticate } from '../../middlewares/auth.middleware.js';
 import { authorize } from '../../middlewares/role.middleware.js';
+import { uploadExcelMiddleware } from '../../middlewares/upload.middleware.js';
 
 const router = Router();
 
+// Public: Excel template download (no auth token required to allow direct browser click/download)
+router.get('/excel-template', StudentsController.downloadTemplate);
+
 router.use(authenticate);
 
-// Student listing and details
+// Auto-generation helpers
 router.get('/next-code', authorize('ADMIN', 'TEACHER'), StudentsController.getNextCode);
+
+// Student listing and details
 router.get('/', authorize('ADMIN', 'TEACHER'), StudentsController.getAll);
 router.get('/:id', authorize('ADMIN', 'TEACHER', 'PARENT', 'STUDENT'), StudentsController.getById);
 
@@ -19,6 +25,7 @@ router.get('/:id/card', authorize('ADMIN', 'TEACHER', 'PARENT', 'STUDENT'), Stud
 
 // Admin-only management
 router.post('/', authorize('ADMIN'), validate(studentsValidation.createStudent), StudentsController.create);
+router.post('/upload-excel', authorize('ADMIN'), uploadExcelMiddleware, StudentsController.uploadExcel);
 router.post('/bulk-import', authorize('ADMIN'), validate(studentsValidation.bulkImport), StudentsController.bulkImport);
 router.patch('/:id/enroll', authorize('ADMIN'), validate(studentsValidation.enroll), StudentsController.enroll);
 router.put('/:id', authorize('ADMIN'), validate(studentsValidation.updateStudent), StudentsController.update);
