@@ -117,6 +117,8 @@ async function main() {
 
   // ==========================================
   // 4. Seed Sub-Admin 1: شؤون الطلاب
+  // Note (all upserts below): password & forcePasswordChange are set on create only,
+  // so re-running the seed never resets a password the user has already changed.
   // ==========================================
   const studentAffairsAdmin = await prisma.user.upsert({
     where: { email: 'student.affairs@school.com' },
@@ -124,10 +126,8 @@ async function main() {
       fullName: 'أ. محمد سعيد حسن',
       name: 'أ. محمد سعيد حسن',
       nationalId: '27805121234561',
-      password: staffPasswordHash,
       role: 'ADMIN',
       status: 'ACTIVE',
-      forcePasswordChange: false,
       permissions: ['students', 'classes', 'attendance-stats', 'announcements'],
     },
     create: {
@@ -154,10 +154,8 @@ async function main() {
       fullName: 'أ. أحمد فتحي عبد العظيم',
       name: 'أ. أحمد فتحي عبد العظيم',
       nationalId: '28210201234562',
-      password: staffPasswordHash,
       role: 'ADMIN',
       status: 'ACTIVE',
-      forcePasswordChange: false,
       permissions: ['teachers', 'teacher-attendance'],
     },
     create: {
@@ -187,10 +185,8 @@ async function main() {
       fullName: 'نشوه يوسف محمد يوسف',
       name: 'نشوه يوسف محمد يوسف',
       nationalId: teacherNationalId,
-      password: teacherPasswordHash,
       role: 'TEACHER',
       status: 'ACTIVE',
-      forcePasswordChange: true,
       permissions: [],
     },
     create: {
@@ -263,10 +259,8 @@ async function main() {
       name: 'عمر طارق حسن',
       studentCode,
       nationalId: '30805121234567',
-      password: studentPasswordHash,
       role: 'STUDENT',
       status: 'ACTIVE',
-      forcePasswordChange: true,
       permissions: [],
     },
     create: {

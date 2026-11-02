@@ -2,22 +2,20 @@ import { Router } from 'express';
 import { TeachersController } from './teachers.controller.js';
 import { teachersValidation } from './teachers.validation.js';
 import { validate } from '../../middlewares/validate.middleware.js';
-import { authenticate } from '../../middlewares/auth.middleware.js';
-import { authorize } from '../../middlewares/role.middleware.js';
+import { verifyToken, requireRoles, checkPermission } from '../../middlewares/auth.middleware.js';
 
 const router = Router();
 
-router.use(authenticate);
+router.use(verifyToken);
 
-// View teachers
-router.get('/', authorize('ADMIN', 'TEACHER'), TeachersController.getAll);
-router.get('/:id', authorize('ADMIN', 'TEACHER', 'STUDENT', 'PARENT'), TeachersController.getById);
+// Reading: every admin (other pages list teachers, e.g. class advisors) and teachers (a reduced view)
+router.get('/', requireRoles(['SUPER_ADMIN', 'ADMIN', 'TEACHER']), TeachersController.getAll);
 
-// Admin-only management
-router.post('/', authorize('ADMIN'), validate(teachersValidation.createTeacher), TeachersController.create);
-router.put('/:id', authorize('ADMIN'), validate(teachersValidation.updateTeacher), TeachersController.update);
-router.patch('/:id/subjects', authorize('ADMIN'), validate(teachersValidation.assignSubjects), TeachersController.assignSubjects);
-router.patch('/:id/classes', authorize('ADMIN'), validate(teachersValidation.assignClasses), TeachersController.assignClasses);
-router.delete('/:id', authorize('ADMIN'), TeachersController.remove);
+// Managing: SUPER_ADMIN, or an ADMIN granted the 'teachers' section
+router.get('/class-options', checkPermission('teachers'), TeachersController.getClassOptions);
+router.get('/:id', checkPermission('teachers'), TeachersController.getById);
+router.post('/', checkPermission('teachers'), validate(teachersValidation.createTeacher), TeachersController.create);
+router.put('/:id', checkPermission('teachers'), validate(teachersValidation.updateTeacher), TeachersController.update);
+router.delete('/:id', checkPermission('teachers'), TeachersController.remove);
 
 export default router;

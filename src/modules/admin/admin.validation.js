@@ -5,7 +5,6 @@ export const SYSTEM_PERMISSIONS = [
   'students',
   'teachers',
   'classes',
-  'assignments',
   'exams',
   'attendance-stats',
   'teacher-attendance',

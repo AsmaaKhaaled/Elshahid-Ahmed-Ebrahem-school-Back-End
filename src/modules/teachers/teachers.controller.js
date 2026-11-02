@@ -1,91 +1,73 @@
 import { TeachersService } from './teachers.service.js';
-import { ApiResponse } from '../../shared/utils/api-response.js';
 
 export class TeachersController {
+  /**
+   * GET /api/v1/teachers
+   */
   static async getAll(req, res, next) {
     try {
-      const teachers = await TeachersService.getTeachers(req.query);
-      return ApiResponse.success(res, {
-        statusCode: 200,
-        message: 'Teachers retrieved successfully',
-        data: teachers,
-        meta: { total: teachers.length },
-      });
+      const teachers = await TeachersService.getTeachers(req.user.role);
+      return res.status(200).json({ status: 'success', results: teachers.length, data: { teachers } });
     } catch (error) {
       next(error);
     }
   }
 
+  /**
+   * GET /api/v1/teachers/class-options
+   */
+  static async getClassOptions(req, res, next) {
+    try {
+      const classes = await TeachersService.getClassOptions();
+      return res.status(200).json({ status: 'success', data: { classes } });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/v1/teachers/:id
+   */
   static async getById(req, res, next) {
     try {
       const teacher = await TeachersService.getTeacherById(req.params.id);
-      return ApiResponse.success(res, {
-        statusCode: 200,
-        message: 'Teacher retrieved successfully',
-        data: teacher,
-      });
+      return res.status(200).json({ status: 'success', data: { teacher } });
     } catch (error) {
       next(error);
     }
   }
 
+  /**
+   * POST /api/v1/teachers
+   */
   static async create(req, res, next) {
     try {
       const teacher = await TeachersService.createTeacher(req.body);
-      return ApiResponse.created(res, teacher, 'Teacher added successfully');
+      return res.status(201).json({ status: 'success', message: 'تمت إضافة المعلم', data: { teacher } });
     } catch (error) {
       next(error);
     }
   }
 
+  /**
+   * PUT /api/v1/teachers/:id
+   */
   static async update(req, res, next) {
     try {
-      const updated = await TeachersService.updateTeacher(req.params.id, req.body);
-      return ApiResponse.success(res, {
-        statusCode: 200,
-        message: 'Teacher updated successfully',
-        data: updated,
-      });
+      const teacher = await TeachersService.updateTeacher(req.params.id, req.body);
+      return res.status(200).json({ status: 'success', message: 'تم حفظ بيانات المعلم', data: { teacher } });
     } catch (error) {
       next(error);
     }
   }
 
-  static async assignSubjects(req, res, next) {
-    try {
-      const { assignedSubjectIds } = req.body;
-      const updated = await TeachersService.assignSubjects(req.params.id, assignedSubjectIds);
-      return ApiResponse.success(res, {
-        statusCode: 200,
-        message: 'Assigned subjects updated successfully',
-        data: updated,
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  static async assignClasses(req, res, next) {
-    try {
-      const { assignedClassIds } = req.body;
-      const updated = await TeachersService.assignClasses(req.params.id, assignedClassIds);
-      return ApiResponse.success(res, {
-        statusCode: 200,
-        message: 'Assigned classes updated successfully',
-        data: updated,
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-
+  /**
+   * DELETE /api/v1/teachers/:id
+   */
   static async remove(req, res, next) {
     try {
       await TeachersService.deleteTeacher(req.params.id);
-      return ApiResponse.success(res, {
-        statusCode: 200,
-        message: 'Teacher removed successfully',
-      });
+      return res.status(200).json({ status: 'success', message: 'تم حذف المعلم' });
     } catch (error) {
       next(error);
     }

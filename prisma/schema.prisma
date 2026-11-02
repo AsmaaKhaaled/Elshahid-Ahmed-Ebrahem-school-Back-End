@@ -38,29 +38,32 @@ model User {
   email               String?    @unique // إيميل المدير أو المعلم
   fullName            String     @default("")
   name                String?
-  password            String     // Bcrypt Hashed Password
+  password            String // Bcrypt Hashed Password
   role                Role       @default(STUDENT)
   status              UserStatus @default(ACTIVE)
   forcePasswordChange Boolean    @default(false)
   phone               String?
-  jobTitle            String?    // المسمى الوظيفي للمسؤول (مثال: وكيل شؤون الطلاب)
+  jobTitle            String? // المسمى الوظيفي للمسؤول (مثال: وكيل شؤون الطلاب)
 
   // صلاحيات المسؤول الفرعي:
-  permissions         String[]   @default([])
+  permissions String[] @default([])
 
   // Profile Relations
-  studentProfile      Student?
-  teacherProfile      Teacher?
+  studentProfile Student?
+  teacherProfile Teacher?
 
   // Operational Relations
-  recordedAttendances   Attendance[]   @relation("AttendanceRecorder")
-  recordedGrades        Grade[]        @relation("GradeRecorder")
-  announcedExams        Exam[]         @relation("ExamAnnouncer")
-  uploadedMaterials     Material[]     @relation("MaterialUploader")
-  authoredAnnouncements Announcement[] @relation("AnnouncementAuthor")
+  recordedAttendances        Attendance[]           @relation("AttendanceRecorder")
+  recordedGrades             Grade[]                @relation("GradeRecorder")
+  announcedExams             Exam[]                 @relation("ExamAnnouncer")
+  uploadedMaterials          Material[]             @relation("MaterialUploader")
+  authoredAnnouncements      Announcement[]         @relation("AnnouncementAuthor")
+  recordedTeacherAttendances TeacherAttendance[]    @relation("TeacherAttendanceRecorder")
+  closedAttendanceDays       TeacherAttendanceDay[] @relation("TeacherAttendanceDayCloser")
+  createdHolidays            SchoolHoliday[]        @relation("SchoolHolidayCreator")
 
-  createdAt           DateTime   @default(now())
-  updatedAt           DateTime   @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([email])
   @@index([nationalId])
@@ -101,26 +104,37 @@ model Student {
 // 3. Teachers Management
 // ==========================================
 
-model Teacher {
-  id              String   @id @default(cuid())
-  userId          String?  @unique
-  teacherCode     String   @unique
-  fullNameArabic  String
-  fullNameEnglish String?
-  nationalId      String?  @unique
-  specialization  String
-  email           String?
-  phone           String?
-  hireDate        String?
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+enum TeacherEmploymentStatus {
+  ON_DUTY // على رأس العمل
+  ON_LEAVE // إجازة اعتيادية
+  SECONDED // منتدب
+}
 
-  user              User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
-  supervisedClasses Class[]     @relation("ClassTeacherSupervisor")
-  subjects          Subject[]   @relation("TeacherSubjects")
-  classes           Class[]     @relation("TeacherClasses")
+model Teacher {
+  id               String                  @id @default(cuid())
+  userId           String?                 @unique
+  teacherCode      String                  @unique
+  fullNameArabic   String
+  fullNameEnglish  String?
+  nationalId       String?                 @unique
+  specialization   String
+  jobTitle         String? // المسمى الوظيفي (مثال: معلم أول رياضيات)
+  // Subjects the teacher teaches, by their Arabic name (e.g. "اللغة العربية")
+  teachingSubjects String[]                @default([])
+  employmentStatus TeacherEmploymentStatus @default(ON_DUTY)
+  email            String?
+  phone            String?
+  hireDate         String?
+  isActive         Boolean                 @default(true)
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  user              User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
+  supervisedClasses Class[]             @relation("ClassTeacherSupervisor")
+  subjects          Subject[]           @relation("TeacherSubjects")
+  classes           Class[]             @relation("TeacherClasses")
   timetableEntries  Timetable[]
+  attendanceRecords TeacherAttendance[]
 
   @@map("teachers")
 }
@@ -130,16 +144,16 @@ model Teacher {
 // ==========================================
 
 model Class {
-  id                 String   @id @default(cuid())
-  name               String   @unique // e.g. "1/A", "1/B"
-  displayNameArabic  String?
-  gradeLevel         String // e.g. "1st Preparatory"
-  roomNumber         String?
-  capacity           Int      @default(40)
-  classTeacherId     String?
-  isActive           Boolean  @default(true)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id                String   @id @default(cuid())
+  name              String   @unique // e.g. "1/A", "1/B"
+  displayNameArabic String?
+  gradeLevel        String // e.g. "1st Preparatory"
+  roomNumber        String?
+  capacity          Int      @default(40)
+  classTeacherId    String?
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   classTeacher     Teacher?       @relation("ClassTeacherSupervisor", fields: [classTeacherId], references: [id], onDelete: SetNull)
   assignedTeachers Teacher[]      @relation("TeacherClasses")
@@ -376,3 +390,74 @@ model Announcement {
   @@map("announcements")
 }
 
+// ==========================================
+// 11. Teachers Attendance Book (دفتر حضور وغياب المعلمين)
+// ==========================================
+
+enum TeacherAttendanceStatus {
+  PRESENT
+  LATE
+  ABSENT
+  CASUAL_LEAVE
+  SICK_LEAVE
+  MISSION
+  NOT_RECORDED // Filled in when a day is closed without a status for the teacher
+}
+
+// One row per teacher per school day. The teacher's name is kept on the row,
+// so the archive stays readable even after the teacher is removed.
+model TeacherAttendance {
+  id             String                  @id @default(cuid())
+  date           String // YYYY-MM-DD
+  teacherId      String?
+  teacherName    String
+  // Normalized name (no hamza / taa marbuta variants) for alphabetical ordering
+  teacherSortKey String
+  specialization String                  @default("")
+  status         TeacherAttendanceStatus
+  arrivalTime    String? // HH:mm
+  departureTime  String? // HH:mm
+  note           String?
+  recordedById   String?
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+
+  teacher    Teacher? @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+  recordedBy User?    @relation("TeacherAttendanceRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  @@unique([teacherId, date])
+  @@index([date, teacherSortKey])
+  @@index([teacherId])
+  @@map("teacher_attendances")
+}
+
+// A closed (approved) day can no longer be edited, unless the super admin reopens it.
+// A row with isClosed = false is a past day opened by hand (reopened, or filled in late):
+// it waits for a manual approval instead of being closed automatically.
+model TeacherAttendanceDay {
+  date       String    @id // YYYY-MM-DD
+  isClosed   Boolean   @default(true)
+  closedAt   DateTime? @default(now())
+  closedById String?
+  // true when the system closed it after the day ended
+  autoClosed Boolean   @default(false)
+
+  closedBy User? @relation("TeacherAttendanceDayCloser", fields: [closedById], references: [id], onDelete: SetNull)
+
+  @@map("teacher_attendance_days")
+}
+
+// Official days off besides the weekly Friday & Saturday (a single day or a range)
+model SchoolHoliday {
+  id          String   @id @default(cuid())
+  startDate   String // YYYY-MM-DD
+  endDate     String // YYYY-MM-DD (same as startDate for one day)
+  reason      String
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  createdBy User? @relation("SchoolHolidayCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([startDate, endDate])
+  @@map("school_holidays")
+}
