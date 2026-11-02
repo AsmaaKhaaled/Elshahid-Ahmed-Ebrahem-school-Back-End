@@ -7,9 +7,22 @@ export class StudentsController {
       const students = await StudentsService.getStudents(req.query);
       return ApiResponse.success(res, {
         statusCode: 200,
-        message: 'Students retrieved successfully',
+        message: 'تم جلب بيانات الطلاب بنجاح',
         data: students,
         meta: { total: students.length },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getNextCode(req, res, next) {
+    try {
+      const studentCode = await StudentsService.getNextStudentCode();
+      return ApiResponse.success(res, {
+        statusCode: 200,
+        message: 'تم توليد كود الطالب بنجاح',
+        data: { studentCode },
       });
     } catch (error) {
       next(error);
@@ -21,7 +34,7 @@ export class StudentsController {
       const student = await StudentsService.getStudentById(req.params.id);
       return ApiResponse.success(res, {
         statusCode: 200,
-        message: 'Student retrieved successfully',
+        message: 'تم استرجاع بيانات الطالب بنجاح',
         data: student,
       });
     } catch (error) {
@@ -32,7 +45,7 @@ export class StudentsController {
   static async create(req, res, next) {
     try {
       const student = await StudentsService.createStudent(req.body);
-      return ApiResponse.created(res, student, 'Student registered successfully');
+      return ApiResponse.created(res, student, 'تم تسجيل الطالب بنجاح بالمنظومة');
     } catch (error) {
       next(error);
     }
@@ -43,7 +56,7 @@ export class StudentsController {
       const updated = await StudentsService.updateStudent(req.params.id, req.body);
       return ApiResponse.success(res, {
         statusCode: 200,
-        message: 'Student updated successfully',
+        message: 'تم تحديث بيانات الطالب بنجاح',
         data: updated,
       });
     } catch (error) {
@@ -57,7 +70,7 @@ export class StudentsController {
       const updated = await StudentsService.enrollStudent(req.params.id, classId);
       return ApiResponse.success(res, {
         statusCode: 200,
-        message: 'Student enrolled in class successfully',
+        message: 'تم تسكين الطالب في الفصل بنجاح',
         data: updated,
       });
     } catch (error) {
@@ -69,7 +82,7 @@ export class StudentsController {
     try {
       const { students } = req.body;
       const result = await StudentsService.bulkImportStudents(students);
-      return ApiResponse.created(res, result, 'Students imported successfully');
+      return ApiResponse.created(res, result, 'تم استيراد بيانات الطلاب بنجاح');
     } catch (error) {
       next(error);
     }
@@ -80,7 +93,7 @@ export class StudentsController {
       const cardData = await StudentsService.generateStudentCard(req.params.id);
       return ApiResponse.success(res, {
         statusCode: 200,
-        message: 'Student ID card generated successfully',
+        message: 'تم إصدار بطاقة تعريف الطالب بنجاح',
         data: cardData,
       });
     } catch (error) {
@@ -93,7 +106,7 @@ export class StudentsController {
       await StudentsService.deleteStudent(req.params.id);
       return ApiResponse.success(res, {
         statusCode: 200,
-        message: 'Student removed successfully',
+        message: 'تم حذف قيد الطالب بنجاح',
       });
     } catch (error) {
       next(error);

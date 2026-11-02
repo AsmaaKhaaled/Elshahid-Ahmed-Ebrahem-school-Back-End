@@ -10,6 +10,7 @@ const router = Router();
 router.use(authenticate);
 
 // Student listing and details
+router.get('/next-code', authorize('ADMIN', 'TEACHER'), StudentsController.getNextCode);
 router.get('/', authorize('ADMIN', 'TEACHER'), StudentsController.getAll);
 router.get('/:id', authorize('ADMIN', 'TEACHER', 'PARENT', 'STUDENT'), StudentsController.getById);
 
