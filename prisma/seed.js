@@ -12,60 +12,57 @@ async function main() {
   const teacherPasswordHash = await bcrypt.hash('Teacher@2026', SALT_ROUNDS);
   const studentPasswordHash = await bcrypt.hash('Student@2026', SALT_ROUNDS);
 
-  // ==========================================
-  // 1. Seed School Classes (فصول أ/ نشوه: 3/2 ، 3/3 ، 3/4)
-  // ==========================================
-  const class3_2 = await prisma.class.upsert({
-    where: { name: '3/2' },
-    update: {
-      displayNameArabic: 'الصف الثالث الإعدادي - فصل 3/2',
-      gradeLevel: '3rd Preparatory',
-      roomNumber: '302',
-    },
-    create: {
-      name: '3/2',
-      displayNameArabic: 'الصف الثالث الإعدادي - فصل 3/2',
-      gradeLevel: '3rd Preparatory',
-      roomNumber: '302',
-      capacity: 40,
-      isActive: true,
-    },
-  });
+  // Clean up legacy non-standard test class if exists
+  await prisma.class.deleteMany({
+    where: { name: '1/A' },
+  }).catch(() => {});
 
-  const class3_3 = await prisma.class.upsert({
-    where: { name: '3/3' },
-    update: {
-      displayNameArabic: 'الصف الثالث الإعدادي - فصل 3/3',
-      gradeLevel: '3rd Preparatory',
-      roomNumber: '303',
-    },
-    create: {
-      name: '3/3',
-      displayNameArabic: 'الصف الثالث الإعدادي - فصل 3/3',
-      gradeLevel: '3rd Preparatory',
-      roomNumber: '303',
-      capacity: 40,
-      isActive: true,
-    },
-  });
+  // ==========================================
+  // 1. Seed School Classes (فصول المدرسة الـ 12 - 3 مراحل × 4 فصول)
+  // ==========================================
+  const schoolClassesData = [
+    // المرحلة الأولى: الصف الأول الإعدادي (4 فصول)
+    { name: '1/1', displayNameArabic: 'الصف الأول الإعدادي - فصل 1/1', gradeLevel: 'الصف الأول الإعدادي', roomNumber: '101' },
+    { name: '1/2', displayNameArabic: 'الصف الأول الإعدادي - فصل 1/2', gradeLevel: 'الصف الأول الإعدادي', roomNumber: '102' },
+    { name: '1/3', displayNameArabic: 'الصف الأول الإعدادي - فصل 1/3', gradeLevel: 'الصف الأول الإعدادي', roomNumber: '103' },
+    { name: '1/4', displayNameArabic: 'الصف الأول الإعدادي - فصل 1/4', gradeLevel: 'الصف الأول الإعدادي', roomNumber: '104' },
 
-  const class3_4 = await prisma.class.upsert({
-    where: { name: '3/4' },
-    update: {
-      displayNameArabic: 'الصف الثالث الإعدادي - فصل 3/4',
-      gradeLevel: '3rd Preparatory',
-      roomNumber: '304',
-    },
-    create: {
-      name: '3/4',
-      displayNameArabic: 'الصف الثالث الإعدادي - فصل 3/4',
-      gradeLevel: '3rd Preparatory',
-      roomNumber: '304',
-      capacity: 40,
-      isActive: true,
-    },
-  });
-  console.log(`✅ Classes ready: [${class3_2.name}, ${class3_3.name}, ${class3_4.name}]`);
+    // المرحلة الثانية: الصف الثاني الإعدادي (4 فصول)
+    { name: '2/1', displayNameArabic: 'الصف الثاني الإعدادي - فصل 2/1', gradeLevel: 'الصف الثاني الإعدادي', roomNumber: '201' },
+    { name: '2/2', displayNameArabic: 'الصف الثاني الإعدادي - فصل 2/2', gradeLevel: 'الصف الثاني الإعدادي', roomNumber: '202' },
+    { name: '2/3', displayNameArabic: 'الصف الثاني الإعدادي - فصل 2/3', gradeLevel: 'الصف الثاني الإعدادي', roomNumber: '203' },
+    { name: '2/4', displayNameArabic: 'الصف الثاني الإعدادي - فصل 2/4', gradeLevel: 'الصف الثاني الإعدادي', roomNumber: '204' },
+
+    // المرحلة الثالثة: الصف الثالث الإعدادي (4 فصول)
+    { name: '3/1', displayNameArabic: 'الصف الثالث الإعدادي - فصل 3/1', gradeLevel: 'الصف الثالث الإعدادي', roomNumber: '301' },
+    { name: '3/2', displayNameArabic: 'الصف الثالث الإعدادي - فصل 3/2', gradeLevel: 'الصف الثالث الإعدادي', roomNumber: '302' },
+    { name: '3/3', displayNameArabic: 'الصف الثالث الإعدادي - فصل 3/3', gradeLevel: 'الصف الثالث الإعدادي', roomNumber: '303' },
+    { name: '3/4', displayNameArabic: 'الصف الثالث الإعدادي - فصل 3/4', gradeLevel: 'الصف الثالث الإعدادي', roomNumber: '304' },
+  ];
+
+  const seededClasses = {};
+  for (const item of schoolClassesData) {
+    const cls = await prisma.class.upsert({
+      where: { name: item.name },
+      update: {
+        displayNameArabic: item.displayNameArabic,
+        gradeLevel: item.gradeLevel,
+        roomNumber: item.roomNumber,
+        capacity: 40,
+        isActive: true,
+      },
+      create: {
+        name: item.name,
+        displayNameArabic: item.displayNameArabic,
+        gradeLevel: item.gradeLevel,
+        roomNumber: item.roomNumber,
+        capacity: 40,
+        isActive: true,
+      },
+    });
+    seededClasses[item.name] = cls;
+  }
+  console.log(`✅ Seeded ${Object.keys(seededClasses).length} classes for all 3 preparatory stages (12 classes total).`);
 
   // ==========================================
   // 2. Seed Subjects (مادة الرياضيات)
@@ -75,13 +72,13 @@ async function main() {
     update: {
       nameArabic: 'رياضيات',
       nameEnglish: 'Mathematics',
-      gradeLevel: '3rd Preparatory',
+      gradeLevel: 'الصف الثالث الإعدادي',
     },
     create: {
       code: 'MTH-PREP3',
       nameArabic: 'رياضيات',
       nameEnglish: 'Mathematics',
-      gradeLevel: '3rd Preparatory',
+      gradeLevel: 'الصف الثالث الإعدادي',
       maxMarks: 100,
       passMarks: 50,
       isActive: true,
@@ -91,12 +88,20 @@ async function main() {
 
   // ==========================================
   // 3. Seed Super Admin (مدير المدرسة)
-  // Created once only: the principal edits their own details & password from
-  // "بيانات الحساب", so re-running the seed must never reset them.
   // ==========================================
-  const existingSuperAdmin = await prisma.user.findFirst({ where: { role: 'SUPER_ADMIN' } });
-  const superAdmin = existingSuperAdmin ?? await prisma.user.create({
-    data: {
+  const superAdmin = await prisma.user.upsert({
+    where: { email: 'admin@school.com' },
+    update: {
+      fullName: 'أ. د. محمود عبد العزيز الشناوي',
+      name: 'أ. د. محمود عبد العزيز الشناوي',
+      nationalId: '28001011234567',
+      password: adminPasswordHash,
+      role: 'SUPER_ADMIN',
+      status: 'ACTIVE',
+      forcePasswordChange: false,
+      permissions: [],
+    },
+    create: {
       fullName: 'أ. د. محمود عبد العزيز الشناوي',
       name: 'أ. د. محمود عبد العزيز الشناوي',
       email: 'admin@school.com',
@@ -109,11 +114,7 @@ async function main() {
       permissions: [],
     },
   });
-  console.log(
-    existingSuperAdmin
-      ? `ℹ️ Super Admin already exists, left unchanged: [${superAdmin.fullName}]`
-      : `✅ Super Admin Account seeded: [${superAdmin.fullName}] | Email: ${superAdmin.email} | NationalID: ${superAdmin.nationalId}`
-  );
+  console.log(`✅ Super Admin Account seeded: [${superAdmin.fullName}] | Email: ${superAdmin.email}`);
 
   // ==========================================
   // 4. Seed Sub-Admin 1: شؤون الطلاب
@@ -143,7 +144,7 @@ async function main() {
       permissions: ['students', 'classes', 'attendance-stats', 'announcements'],
     },
   });
-  console.log(`✅ Admin 1 (شؤون الطلاب) seeded: [${studentAffairsAdmin.fullName}] | Permissions: ${studentAffairsAdmin.permissions.join(', ')}`);
+  console.log(`✅ Admin 1 (شؤون الطلاب) seeded: [${studentAffairsAdmin.fullName}]`);
 
   // ==========================================
   // 5. Seed Sub-Admin 2: شؤون العاملين
@@ -171,7 +172,7 @@ async function main() {
       permissions: ['teachers', 'teacher-attendance'],
     },
   });
-  console.log(`✅ Admin 2 (شؤون العاملين) seeded: [${teachersAffairsAdmin.fullName}] | Permissions: ${teachersAffairsAdmin.permissions.join(', ')}`);
+  console.log(`✅ Admin 2 (شؤون العاملين) seeded: [${teachersAffairsAdmin.fullName}]`);
 
   // ==========================================
   // 6. Seed Teacher: أ/ نشوه يوسف محمد يوسف
@@ -215,7 +216,11 @@ async function main() {
       phone: '01012345678',
       isActive: true,
       classes: {
-        set: [{ id: class3_2.id }, { id: class3_3.id }, { id: class3_4.id }],
+        set: [
+          { id: seededClasses['3/2'].id },
+          { id: seededClasses['3/3'].id },
+          { id: seededClasses['3/4'].id },
+        ],
       },
       subjects: {
         set: [{ id: mathSubject.id }],
@@ -232,7 +237,11 @@ async function main() {
       phone: '01012345678',
       isActive: true,
       classes: {
-        connect: [{ id: class3_2.id }, { id: class3_3.id }, { id: class3_4.id }],
+        connect: [
+          { id: seededClasses['3/2'].id },
+          { id: seededClasses['3/3'].id },
+          { id: seededClasses['3/4'].id },
+        ],
       },
       subjects: {
         connect: [{ id: mathSubject.id }],
@@ -243,7 +252,7 @@ async function main() {
       subjects: true,
     },
   });
-  console.log(`✅ Teacher Account (أ/ نشوه): NationalID = ${teacherUser.nationalId} | Pass = Teacher@2026`);
+  console.log(`✅ Teacher Account (أ/ نشوه): NationalID = ${teacherUser.nationalId}`);
   console.log(`   📚 فصول المعلمة نشوه (${teacherProfile.classes.length} فصول): ${teacherProfile.classes.map((c) => c.displayNameArabic).join(' ، ')}`);
 
   // ==========================================
@@ -282,27 +291,31 @@ async function main() {
     where: { studentCode },
     update: {
       userId: studentUser.id,
-      classId: class3_2.id,
+      classId: seededClasses['3/2'].id,
+      gradeLevel: 'الصف الثالث الإعدادي',
       fullNameArabic: 'عمر طارق حسن',
       fullNameEnglish: 'Omar Tarek Hassan',
       nationalId: '30805121234567',
       gender: 'MALE',
+      enrollmentStatus: 'منتظم',
       isActive: true,
     },
     create: {
       userId: studentUser.id,
       studentCode,
-      classId: class3_2.id,
+      classId: seededClasses['3/2'].id,
+      gradeLevel: 'الصف الثالث الإعدادي',
       fullNameArabic: 'عمر طارق حسن',
       fullNameEnglish: 'Omar Tarek Hassan',
       nationalId: '30805121234567',
       gender: 'MALE',
+      enrollmentStatus: 'منتظم',
       isActive: true,
     },
   });
-  console.log(`✅ Student Account (عمر طارق): StudentCode = ${studentUser.studentCode} | Pass = Student@2026 | Class = ${class3_2.displayNameArabic}`);
+  console.log(`✅ Student Account (عمر طارق): StudentCode = ${studentUser.studentCode} | Class = ${seededClasses['3/2'].displayNameArabic}`);
 
-  console.log('\n🎉 Database seeding with Roles & Permissions completed successfully!');
+  console.log('\n🎉 Database seeding with 12 preparatory classes completed successfully!');
 }
 
 main()
