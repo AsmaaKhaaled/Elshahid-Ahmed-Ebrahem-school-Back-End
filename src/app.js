@@ -7,6 +7,7 @@ import { env } from './config/env.js';
 import { swaggerSpec } from './docs/swagger.js';
 import { errorHandler, notFoundHandler } from './middlewares/error.middleware.js';
 import { ApiResponse } from './shared/utils/api-response.js';
+import { generalApiLimiter } from './middlewares/rate-limit.middleware.js';
 
 // Import Active MVP Module Routers
 import authRoutes from './modules/auth/auth.routes.js';
@@ -25,12 +26,17 @@ import teacherAttendanceRoutes from './modules/teacher-attendance/teacher-attend
 
 const app = express();
 
-// API Documentation (mounted before helmet so its CSP doesn't block the Swagger UI assets)
-app.get('/api/docs.json', (req, res) => res.json(swaggerSpec));
-app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, { swaggerOptions: { persistAuthorization: true } }));
+// API Documentation (available only in non-production environments)
+if (!env.isProduction) {
+  app.get('/api/docs.json', (req, res) => res.json(swaggerSpec));
+  app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, { swaggerOptions: { persistAuthorization: true } }));
+}
+
+
 
 // Security and utility middlewares
 app.use(helmet());
+app.use('/api/', generalApiLimiter);
 // CLIENT_URL may hold several comma-separated origins.
 // In development, any localhost port is allowed (ng serve may pick a random port).
 const allowedOrigins = env.CLIENT_URL.split(',').map((origin) => origin.trim());

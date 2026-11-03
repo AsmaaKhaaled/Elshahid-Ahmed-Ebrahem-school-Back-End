@@ -72,9 +72,17 @@ export class ClassModel {
   }
 
   static async update(id, data) {
+    const allowed = ['name', 'displayNameArabic', 'gradeLevel', 'roomNumber', 'capacity', 'classTeacherId'];
+    const updateData = {};
+    for (const key of allowed) {
+      if (data[key] !== undefined) {
+        updateData[key] = key === 'capacity' ? Number(data[key]) : data[key];
+      }
+    }
+
     return prisma.class.update({
       where: { id },
-      data,
+      data: updateData,
       include: {
         classTeacher: true,
       },

@@ -1,4 +1,5 @@
 import { AdminService } from './admin.service.js';
+import { ApiResponse } from '../../shared/utils/api-response.js';
 
 export class AdminController {
   /**
@@ -7,10 +8,11 @@ export class AdminController {
   static async getAllAdmins(req, res, next) {
     try {
       const admins = await AdminService.getAllAdmins(req.query);
-      return res.status(200).json({
-        status: 'success',
-        results: admins.length,
-        data: { admins },
+      return ApiResponse.success(res, {
+        statusCode: 200,
+        message: 'تم جلب قائمة المسؤولين بنجاح',
+        data: admins,
+        meta: { total: admins.length },
       });
     } catch (error) {
       next(error);
@@ -23,9 +25,10 @@ export class AdminController {
   static async getAdminById(req, res, next) {
     try {
       const admin = await AdminService.getAdminById(req.params.id);
-      return res.status(200).json({
-        status: 'success',
-        data: { admin },
+      return ApiResponse.success(res, {
+        statusCode: 200,
+        message: 'تم استرجاع بيانات المسؤول بنجاح',
+        data: admin,
       });
     } catch (error) {
       next(error);
@@ -38,11 +41,7 @@ export class AdminController {
   static async createAdmin(req, res, next) {
     try {
       const newAdmin = await AdminService.createAdmin(req.body);
-      return res.status(201).json({
-        status: 'success',
-        message: 'تم إنشاء حساب المسؤول بنجاح',
-        data: { admin: newAdmin },
-      });
+      return ApiResponse.created(res, newAdmin, 'تم إنشاء حساب المسؤول بنجاح');
     } catch (error) {
       next(error);
     }
@@ -54,10 +53,10 @@ export class AdminController {
   static async updateAdmin(req, res, next) {
     try {
       const updatedAdmin = await AdminService.updateAdmin(req.params.id, req.body);
-      return res.status(200).json({
-        status: 'success',
+      return ApiResponse.success(res, {
+        statusCode: 200,
         message: 'تم تحديث بيانات المسؤول بنجاح',
-        data: { admin: updatedAdmin },
+        data: updatedAdmin,
       });
     } catch (error) {
       next(error);
@@ -70,10 +69,10 @@ export class AdminController {
   static async updatePermissions(req, res, next) {
     try {
       const updatedAdmin = await AdminService.updatePermissions(req.params.id, req.body.permissions);
-      return res.status(200).json({
-        status: 'success',
+      return ApiResponse.success(res, {
+        statusCode: 200,
         message: 'تم تحديث صلاحيات المسؤول بنجاح',
-        data: { admin: updatedAdmin },
+        data: updatedAdmin,
       });
     } catch (error) {
       next(error);
@@ -86,10 +85,10 @@ export class AdminController {
   static async updateStatus(req, res, next) {
     try {
       const updatedAdmin = await AdminService.updateStatus(req.params.id, req.body.status);
-      return res.status(200).json({
-        status: 'success',
+      return ApiResponse.success(res, {
+        statusCode: 200,
         message: 'تم تحديث حالة حساب المسؤول بنجاح',
-        data: { admin: updatedAdmin },
+        data: updatedAdmin,
       });
     } catch (error) {
       next(error);
@@ -102,8 +101,8 @@ export class AdminController {
   static async resetPassword(req, res, next) {
     try {
       const result = await AdminService.resetPassword(req.params.id, req.body.newPassword);
-      return res.status(200).json({
-        status: 'success',
+      return ApiResponse.success(res, {
+        statusCode: 200,
         message: result.message,
       });
     } catch (error) {
@@ -117,8 +116,8 @@ export class AdminController {
   static async deleteAdmin(req, res, next) {
     try {
       const result = await AdminService.deleteAdmin(req.params.id);
-      return res.status(200).json({
-        status: 'success',
+      return ApiResponse.success(res, {
+        statusCode: 200,
         message: result.message,
       });
     } catch (error) {
@@ -128,4 +127,3 @@ export class AdminController {
 }
 
 export default AdminController;
-

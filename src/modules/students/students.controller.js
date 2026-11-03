@@ -5,12 +5,27 @@ import { AppError } from '../../shared/errors/app-error.js';
 export class StudentsController {
   static async getAll(req, res, next) {
     try {
-      const students = await StudentsService.getStudents(req.query);
+      const result = await StudentsService.getStudents(req.query);
+      const isPaginated = result && result.students !== undefined;
+      const data = isPaginated ? result.students : result;
+      const total = isPaginated ? result.total : (Array.isArray(data) ? data.length : 0);
+
+      const page = req.query.page ? Math.max(1, parseInt(req.query.page, 10) || 1) : 1;
+      const limit = req.query.limit ? Math.min(Math.max(1, parseInt(req.query.limit, 10) || 20), 100) : total;
+      const totalPages = req.query.limit ? Math.ceil(total / limit) || 1 : 1;
+
       return ApiResponse.success(res, {
         statusCode: 200,
         message: 'تم جلب بيانات الطلاب بنجاح',
-        data: students,
-        meta: { total: students.length },
+        data,
+        meta: {
+          total,
+          page,
+          limit,
+          totalPages,
+          hasNextPage: page < totalPages,
+          hasPrevPage: page > 1,
+        },
       });
     } catch (error) {
       next(error);
@@ -33,6 +48,12 @@ export class StudentsController {
   static async getById(req, res, next) {
     try {
       const student = await StudentsService.getStudentById(req.params.id);
+      if (req.user.role === 'STUDENT') {
+        const studentProfileId = req.user.studentProfile?.id;
+        if (!studentProfileId || (studentProfileId !== req.params.id && student.userId !== req.user.id)) {
+          throw AppError.forbidden('غير مصرح لك بالاطلاع على بيانات طالب آخر');
+        }
+      }
       return ApiResponse.success(res, {
         statusCode: 200,
         message: 'تم استرجاع بيانات الطالب بنجاح',
@@ -120,6 +141,12 @@ export class StudentsController {
 
   static async generateCard(req, res, next) {
     try {
+      if (req.user.role === 'STUDENT') {
+        const studentProfileId = req.user.studentProfile?.id;
+        if (!studentProfileId || studentProfileId !== req.params.id) {
+          throw AppError.forbidden('غير مصرح لك بإصدار بطاقة طالب آخر');
+        }
+      }
       const cardData = await StudentsService.generateStudentCard(req.params.id);
       return ApiResponse.success(res, {
         statusCode: 200,

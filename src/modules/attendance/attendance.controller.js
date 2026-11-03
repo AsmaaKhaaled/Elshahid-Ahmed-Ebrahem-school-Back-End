@@ -1,5 +1,6 @@
 import { AttendanceService } from './attendance.service.js';
 import { ApiResponse } from '../../shared/utils/api-response.js';
+import { AppError } from '../../shared/errors/app-error.js';
 
 export class AttendanceController {
   static async getAll(req, res, next) {
@@ -19,6 +20,12 @@ export class AttendanceController {
   static async getById(req, res, next) {
     try {
       const record = await AttendanceService.getAttendanceById(req.params.id);
+      if (req.user.role === 'STUDENT') {
+        const studentProfileId = req.user.studentProfile?.id;
+        if (!studentProfileId || (record.studentId !== studentProfileId && record.student?.userId !== req.user.id)) {
+          throw AppError.forbidden('غير مصرح لك بالاطلاع على هذا السجل');
+        }
+      }
       return ApiResponse.success(res, {
         statusCode: 200,
         message: 'Attendance record retrieved successfully',
@@ -31,6 +38,12 @@ export class AttendanceController {
 
   static async getStudentRate(req, res, next) {
     try {
+      if (req.user.role === 'STUDENT') {
+        const studentProfileId = req.user.studentProfile?.id;
+        if (!studentProfileId || (studentProfileId !== req.params.studentId && req.user.id !== req.params.studentId)) {
+          throw AppError.forbidden('غير مصرح لك بالاطلاع على سجل حضور طالب آخر');
+        }
+      }
       const rate = await AttendanceService.getStudentAttendanceRate(req.params.studentId);
       return ApiResponse.success(res, {
         statusCode: 200,

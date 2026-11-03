@@ -34,51 +34,54 @@ export const verifyToken = async (req, res, next) => {
     const decoded = jwt.verify(token, env.JWT_SECRET);
 
     if (decoded.isTemp) {
-      return res.status(403).json({
-        status: 'fail',
-        message: 'Temporary token not authorized for standard access. Please set your initial password first.',
-      });
+      return next(
+        AppError.forbidden('Temporary token not authorized for standard access. Please set your initial password first.')
+      );
     }
 
     const user = await prisma.user.findUnique({
       where: { id: decoded.id },
-      include: {
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        nationalId: true,
+        studentCode: true,
+        role: true,
+        status: true,
+        permissions: true,
+        forcePasswordChange: true,
         studentProfile: {
-          include: {
-            class: true,
+          select: {
+            id: true,
+            classId: true,
           },
         },
         teacherProfile: {
-          include: {
-            subjects: true,
-            classes: true,
+          select: {
+            id: true,
           },
         },
       },
     });
 
     if (!user) {
-      return res.status(401).json({
-        status: 'fail',
-        message: 'الحساب غير موجود',
-      });
+      return next(AppError.unauthorized('الحساب غير موجود'));
     }
 
     if (user.status !== 'ACTIVE') {
-      return res.status(403).json({
-        status: 'fail',
-        message: 'تم تجميد أو تعطيل هذا الحساب. يرجى التواصل مع إدارة النظام.',
-      });
+      return next(AppError.forbidden('تم تجميد أو تعطيل هذا الحساب. يرجى التواصل مع إدارة النظام.'));
     }
 
     req.user = user;
     next();
   } catch (error) {
     if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
-      return res.status(401).json({
-        status: 'fail',
-        message: error.name === 'TokenExpiredError' ? 'انتهت صلاحية جلسة الدخول' : 'رمز المصادقة غير صالح',
-      });
+      return next(
+        AppError.unauthorized(
+          error.name === 'TokenExpiredError' ? 'انتهت صلاحية جلسة الدخول' : 'رمز المصادقة غير صالح'
+        )
+      );
     }
     next(error);
   }
@@ -92,17 +95,11 @@ export const verifyToken = async (req, res, next) => {
 export const requireRoles = (allowedRoles) => {
   return (req, res, next) => {
     if (!req.user) {
-      return res.status(401).json({
-        status: 'fail',
-        message: 'يجب تسجيل الدخول أولاً',
-      });
+      return next(AppError.unauthorized('يجب تسجيل الدخول أولاً'));
     }
 
     if (!allowedRoles.includes(req.user.role)) {
-      return res.status(403).json({
-        status: 'fail',
-        message: 'غير مصرح لك بالوصول لهذا القسم',
-      });
+      return next(AppError.forbidden('غير مصرح لك بالوصول لهذا القسم'));
     }
 
     next();
@@ -115,17 +112,11 @@ export const requireRoles = (allowedRoles) => {
  */
 export const requireSuperAdmin = (req, res, next) => {
   if (!req.user) {
-    return res.status(401).json({
-      status: 'fail',
-      message: 'يجب تسجيل الدخول أولاً',
-    });
+    return next(AppError.unauthorized('يجب تسجيل الدخول أولاً'));
   }
 
   if (req.user.role !== 'SUPER_ADMIN') {
-    return res.status(403).json({
-      status: 'fail',
-      message: 'هذا القسم مخصص لمدير النظام الأعلى (Super Admin) فقط',
-    });
+    return next(AppError.forbidden('هذا القسم مخصص لمدير النظام الأعلى (Super Admin) فقط'));
   }
 
   next();
@@ -142,10 +133,7 @@ export const requireSuperAdmin = (req, res, next) => {
 export const checkPermission = (requiredPermission) => {
   return (req, res, next) => {
     if (!req.user) {
-      return res.status(401).json({
-        status: 'fail',
-        message: 'يجب تسجيل الدخول أولاً',
-      });
+      return next(AppError.unauthorized('يجب تسجيل الدخول أولاً'));
     }
 
     // 1. SUPER_ADMIN bypasses all permission checks
@@ -160,17 +148,11 @@ export const checkPermission = (requiredPermission) => {
         return next();
       }
 
-      return res.status(403).json({
-        status: 'fail',
-        message: 'ليس لديك الصلاحية المطلوبة للوصول لهذا القسم',
-      });
+      return next(AppError.forbidden('ليس لديك الصلاحية المطلوبة للوصول لهذا القسم'));
     }
 
     // 3. Any other role attempting admin-level permission check
-    return res.status(403).json({
-      status: 'fail',
-      message: 'ليس لديك الصلاحية المطلوبة للوصول لهذا القسم',
-    });
+    return next(AppError.forbidden('ليس لديك الصلاحية المطلوبة للوصول لهذا القسم'));
   };
 };
 
@@ -185,10 +167,9 @@ export const verifyTempToken = async (req, res, next) => {
     const decoded = jwt.verify(token, env.JWT_SECRET);
 
     if (!decoded.isTemp) {
-      return res.status(403).json({
-        status: 'fail',
-        message: 'Invalid token type: temporary token required to set initial password',
-      });
+      return next(
+        AppError.forbidden('Invalid token type: temporary token required to set initial password')
+      );
     }
 
     const user = await prisma.user.findUnique({
@@ -196,27 +177,22 @@ export const verifyTempToken = async (req, res, next) => {
     });
 
     if (!user) {
-      return res.status(401).json({
-        status: 'fail',
-        message: 'الحساب غير موجود',
-      });
+      return next(AppError.unauthorized('الحساب غير موجود'));
     }
 
     if (user.status !== 'ACTIVE') {
-      return res.status(403).json({
-        status: 'fail',
-        message: 'تم تجميد أو تعطيل هذا الحساب',
-      });
+      return next(AppError.forbidden('تم تجميد أو تعطيل هذا الحساب'));
     }
 
     req.user = user;
     next();
   } catch (error) {
     if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
-      return res.status(401).json({
-        status: 'fail',
-        message: error.name === 'TokenExpiredError' ? 'انتهت صلاحية الرمز المؤقت' : 'رمز المصادقة غير صالح',
-      });
+      return next(
+        AppError.unauthorized(
+          error.name === 'TokenExpiredError' ? 'انتهت صلاحية الرمز المؤقت' : 'رمز المصادقة غير صالح'
+        )
+      );
     }
     next(error);
   }

@@ -75,7 +75,11 @@ export class GradeModel {
   }
 
   static async updateExam(id, data) {
-    const updateData = { ...data };
+    const allowed = ['title', 'type', 'subjectId', 'classId', 'examDate', 'durationMinutes', 'maxScore', 'passScore', 'room'];
+    const updateData = {};
+    for (const key of allowed) {
+      if (data[key] !== undefined) updateData[key] = data[key];
+    }
     if (updateData.type) {
       updateData.type = updateData.type.toUpperCase();
     }
@@ -186,15 +190,47 @@ export class GradeModel {
   }
 
   static async recordBulkMarks(marksList, recordedById) {
-    const results = [];
-    for (const item of marksList) {
-      const res = await this.createGrade({
-        ...item,
-        recordedById,
+    const operations = marksList.map((item) => {
+      const score = Number(item.score);
+      const maxScore = Number(item.maxScore) || 100;
+      const percentage = Math.round((score / maxScore) * 100);
+      const gradeLetter = calculateGradeLetter(percentage);
+
+      return prisma.grade.upsert({
+        where: {
+          studentId_examId: {
+            studentId: item.studentId,
+            examId: item.examId,
+          },
+        },
+        update: {
+          score,
+          maxScore,
+          percentage,
+          gradeLetter,
+          remarks: item.remarks || null,
+          recordedById: recordedById || null,
+        },
+        create: {
+          studentId: item.studentId,
+          examId: item.examId,
+          subjectId: item.subjectId,
+          score,
+          maxScore,
+          percentage,
+          gradeLetter,
+          remarks: item.remarks || null,
+          recordedById: recordedById || null,
+        },
+        include: {
+          student: true,
+          exam: true,
+          subject: true,
+        },
       });
-      results.push(res);
-    }
-    return results;
+    });
+
+    return prisma.$transaction(operations);
   }
 
   static async updateGrade(id, data) {
@@ -206,15 +242,17 @@ export class GradeModel {
     const percentage = Math.round((score / maxScore) * 100);
     const gradeLetter = calculateGradeLetter(percentage);
 
+    const updateData = {
+      score,
+      maxScore,
+      percentage,
+      gradeLetter,
+    };
+    if (data.notes !== undefined) updateData.notes = data.notes;
+
     return prisma.grade.update({
       where: { id },
-      data: {
-        ...data,
-        score,
-        maxScore,
-        percentage,
-        gradeLetter,
-      },
+      data: updateData,
     });
   }
 

@@ -3,15 +3,17 @@ import { AuthController } from './auth.controller.js';
 import { loginSchema, setInitialPasswordSchema, updateProfileSchema, changePasswordSchema } from './auth.validation.js';
 import { validate } from '../../middlewares/validate.middleware.js';
 import { verifyToken, verifyTempToken, requireRoles } from '../../middlewares/auth.middleware.js';
+import { authLimiter } from '../../middlewares/rate-limit.middleware.js';
 
 const router = Router();
 
 // 1. Unified Login (Admin, Teacher, Student)
-router.post('/login', validate(loginSchema), AuthController.login);
+router.post('/login', authLimiter, validate(loginSchema), AuthController.login);
 
 // 2. Set Initial Password (Protected by temporary token)
 router.patch(
   '/set-initial-password',
+  authLimiter,
   verifyTempToken,
   validate(setInitialPasswordSchema),
   AuthController.setInitialPassword

@@ -1,5 +1,6 @@
 import { GradesService } from './grades.service.js';
 import { ApiResponse } from '../../shared/utils/api-response.js';
+import { AppError } from '../../shared/errors/app-error.js';
 
 export class GradesController {
   // --- Exam Schedules ---
@@ -86,6 +87,12 @@ export class GradesController {
   static async getById(req, res, next) {
     try {
       const grade = await GradesService.getGradeById(req.params.id);
+      if (req.user.role === 'STUDENT') {
+        const studentProfileId = req.user.studentProfile?.id;
+        if (!studentProfileId || (grade.studentId !== studentProfileId && grade.student?.userId !== req.user.id)) {
+          throw AppError.forbidden('غير مصرح لك بالاطلاع على درجات طالب آخر');
+        }
+      }
       return ApiResponse.success(res, {
         statusCode: 200,
         message: 'Grade retrieved successfully',
@@ -98,6 +105,12 @@ export class GradesController {
 
   static async getStudentReportCard(req, res, next) {
     try {
+      if (req.user.role === 'STUDENT') {
+        const studentProfileId = req.user.studentProfile?.id;
+        if (!studentProfileId || (studentProfileId !== req.params.studentId && req.user.id !== req.params.studentId)) {
+          throw AppError.forbidden('غير مصرح لك بالاطلاع على شهادة درجات طالب آخر');
+        }
+      }
       const report = await GradesService.getStudentReportCard(req.params.studentId);
       return ApiResponse.success(res, {
         statusCode: 200,

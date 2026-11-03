@@ -7,11 +7,29 @@ export class StudentModel {
    */
   static async getNextStudentCode() {
     const year = new Date().getFullYear();
-    const count = await prisma.student.count();
-    let nextNum = count + 1;
-    let code = `STD-${year}-${String(nextNum).padStart(3, '0')}`;
+    const latestStudent = await prisma.student.findFirst({
+      where: {
+        studentCode: {
+          startsWith: `STD-${year}-`,
+        },
+      },
+      orderBy: {
+        studentCode: 'desc',
+      },
+      select: {
+        studentCode: true,
+      },
+    });
 
-    // Ensure uniqueness
+    let nextNum = 1;
+    if (latestStudent && latestStudent.studentCode) {
+      const match = latestStudent.studentCode.match(/STD-\d{4}-(\d+)/);
+      if (match) {
+        nextNum = parseInt(match[1], 10) + 1;
+      }
+    }
+
+    let code = `STD-${year}-${String(nextNum).padStart(3, '0')}`;
     while (await prisma.student.findUnique({ where: { studentCode: code } })) {
       nextNum += 1;
       code = `STD-${year}-${String(nextNum).padStart(3, '0')}`;
@@ -20,7 +38,7 @@ export class StudentModel {
     return code;
   }
 
-  static async findAll({ classId, gradeLevel, enrollmentStatus, search } = {}) {
+  static async findAll({ classId, gradeLevel, enrollmentStatus, search, page, limit } = {}) {
     const where = {};
 
     if (classId) {
@@ -46,7 +64,9 @@ export class StudentModel {
       ];
     }
 
-    return prisma.student.findMany({
+    const total = await prisma.student.count({ where });
+
+    const findArgs = {
       where,
       include: {
         class: {
@@ -60,7 +80,18 @@ export class StudentModel {
         },
       },
       orderBy: { createdAt: 'desc' },
-    });
+    };
+
+    if (page !== undefined || limit !== undefined) {
+      const p = Math.max(1, parseInt(page, 10) || 1);
+      const l = Math.min(Math.max(1, parseInt(limit, 10) || 20), 100);
+      findArgs.skip = (p - 1) * l;
+      findArgs.take = l;
+    }
+
+    const students = await prisma.student.findMany(findArgs);
+
+    return { students, total };
   }
 
   static async findById(id) {
@@ -136,9 +167,31 @@ export class StudentModel {
   }
 
   static async update(id, data) {
+    const allowed = [
+      'studentCode',
+      'fullNameArabic',
+      'fullNameEnglish',
+      'nationalId',
+      'gender',
+      'dateOfBirth',
+      'gradeLevel',
+      'classId',
+      'guardianName',
+      'guardianPhone',
+      'address',
+      'enrollmentStatus',
+      'isActive',
+    ];
+    const updateData = {};
+    for (const key of allowed) {
+      if (data[key] !== undefined) {
+        updateData[key] = data[key];
+      }
+    }
+
     return prisma.student.update({
       where: { id },
-      data,
+      data: updateData,
       include: {
         class: true,
       },

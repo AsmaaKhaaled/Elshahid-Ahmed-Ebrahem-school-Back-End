@@ -99,6 +99,9 @@ model Student {
   attendances Attendance[]
   grades      Grade[]
 
+  @@index([classId])
+  @@index([userId])
+  @@index([gradeLevel])
   @@map("students")
 }
 
@@ -225,6 +228,9 @@ model Timetable {
   teacher Teacher? @relation(fields: [teacherId], references: [id], onDelete: SetNull)
 
   @@unique([classId, dayOfWeek, periodNumber])
+  @@index([classId])
+  @@index([teacherId])
+  @@index([subjectId])
   @@map("timetable")
 }
 
@@ -258,6 +264,8 @@ model Material {
   class    Class?  @relation(fields: [classId], references: [id], onDelete: SetNull)
   uploader User?   @relation("MaterialUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
 
+  @@index([subjectId])
+  @@index([classId])
   @@map("materials")
 }
 
@@ -288,6 +296,9 @@ model Attendance {
   recordedBy User?   @relation("AttendanceRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
 
   @@unique([studentId, date])
+  @@index([classId])
+  @@index([date])
+  @@index([studentId])
   @@map("attendances")
 }
 
@@ -322,6 +333,9 @@ model Exam {
   announcedBy User?   @relation("ExamAnnouncer", fields: [announcedById], references: [id], onDelete: SetNull)
   grades      Grade[]
 
+  @@index([classId])
+  @@index([subjectId])
+  @@index([examDate])
   @@map("exams")
 }
 
@@ -345,6 +359,9 @@ model Grade {
   recordedBy User?   @relation("GradeRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
 
   @@unique([studentId, examId])
+  @@index([studentId])
+  @@index([examId])
+  @@index([subjectId])
   @@map("grades")
 }
 

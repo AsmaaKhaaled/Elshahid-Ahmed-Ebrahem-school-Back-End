@@ -1,5 +1,6 @@
 import { AttendanceModel } from './attendance.model.js';
 import { AppError } from '../../shared/errors/app-error.js';
+import { prisma } from '../../config/database.js';
 
 export class AttendanceService {
   static async getAttendance(query) {
@@ -48,29 +49,31 @@ export class AttendanceService {
   }
 
   static async getStudentAttendanceRate(studentId) {
-    const records = await AttendanceModel.findAll({ studentId });
-    const totalDays = records.length;
+    const counts = await prisma.attendance.groupBy({
+      by: ['status'],
+      where: { studentId },
+      _count: {
+        _all: true,
+      },
+    });
 
-    if (totalDays === 0) {
-      return {
-        studentId,
-        totalDays: 0,
-        presentCount: 0,
-        absentCount: 0,
-        lateCount: 0,
-        excusedCount: 0,
-        attendanceRate: 0,
-      };
+    let totalDays = 0;
+    let presentCount = 0;
+    let absentCount = 0;
+    let lateCount = 0;
+    let excusedCount = 0;
+
+    for (const group of counts) {
+      const count = group._count._all;
+      totalDays += count;
+      if (group.status === 'PRESENT') presentCount = count;
+      else if (group.status === 'ABSENT') absentCount = count;
+      else if (group.status === 'LATE') lateCount = count;
+      else if (group.status === 'EXCUSED') excusedCount = count;
     }
 
-    const presentCount = records.filter((r) => r.status === 'PRESENT').length;
-    const absentCount = records.filter((r) => r.status === 'ABSENT').length;
-    const lateCount = records.filter((r) => r.status === 'LATE').length;
-    const excusedCount = records.filter((r) => r.status === 'EXCUSED').length;
-
-    // Rate: (present + late + excused) / totalDays
     const attendedDays = presentCount + lateCount + excusedCount;
-    const attendanceRate = Math.round((attendedDays / totalDays) * 100);
+    const attendanceRate = totalDays > 0 ? Math.round((attendedDays / totalDays) * 100) : 0;
 
     return {
       studentId,
@@ -79,36 +82,47 @@ export class AttendanceService {
       absentCount,
       lateCount,
       excusedCount,
-      attendanceRate, // Percentage
+      attendanceRate,
     };
   }
 
   static async getClassAttendanceRate(classId, date) {
-    const query = { classId };
-    if (date) query.date = date;
+    const where = { classId };
+    if (date) where.date = date;
 
-    const records = await AttendanceModel.findAll(query);
-    const totalRecords = records.length;
+    const counts = await prisma.attendance.groupBy({
+      by: ['status'],
+      where,
+      _count: {
+        _all: true,
+      },
+    });
 
-    if (totalRecords === 0) {
-      return {
-        classId,
-        date: date || 'ALL_TIME',
-        totalRecords: 0,
-        presentRate: 0,
-      };
+    let totalRecords = 0;
+    let presentCount = 0;
+    let absentCount = 0;
+    let lateCount = 0;
+    let excusedCount = 0;
+
+    for (const group of counts) {
+      const count = group._count._all;
+      totalRecords += count;
+      if (group.status === 'PRESENT') presentCount = count;
+      else if (group.status === 'ABSENT') absentCount = count;
+      else if (group.status === 'LATE') lateCount = count;
+      else if (group.status === 'EXCUSED') excusedCount = count;
     }
 
-    const presentCount = records.filter((r) => r.status === 'PRESENT').length;
-    const presentRate = Math.round((presentCount / totalRecords) * 100);
+    const presentRate = totalRecords > 0 ? Math.round((presentCount / totalRecords) * 100) : 0;
 
     return {
       classId,
       date: date || 'ALL_TIME',
       totalRecords,
       presentCount,
-      absentCount: records.filter((r) => r.status === 'ABSENT').length,
-      lateCount: records.filter((r) => r.status === 'LATE').length,
+      absentCount,
+      lateCount,
+      excusedCount,
       presentRate,
     };
   }
