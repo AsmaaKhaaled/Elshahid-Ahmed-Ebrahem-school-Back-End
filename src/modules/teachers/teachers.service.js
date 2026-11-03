@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import { prisma } from '../../config/database.js';
 import { AppError } from '../../shared/errors/app-error.js';
 import { compareArabic } from '../../shared/utils/arabic.js';
+import { parsePagination, buildPaginationMeta } from '../../shared/utils/pagination.js';
 
 const SALT_ROUNDS = 10;
 
@@ -55,6 +56,57 @@ const toPublicDto = (teacher) => ({
 });
 
 const clean = (value) => (typeof value === 'string' && value.trim() ? value.trim() : null);
+
+// ---- The signed-in teacher's own classes (assigned by the admin on the teachers page) ----
+
+// A teacher's classes: the ones they teach, plus the one they advise
+const myClassesWhere = (teacherId) => ({
+  isActive: true,
+  OR: [{ assignedTeachers: { some: { id: teacherId } } }, { classTeacherId: teacherId }],
+});
+
+const MY_CLASS_SELECT = {
+  id: true,
+  name: true,
+  displayNameArabic: true,
+  gradeLevel: true,
+  roomNumber: true,
+  capacity: true,
+  classTeacherId: true,
+  _count: { select: { students: { where: { isActive: true } } } },
+};
+
+const toMyClassDto = (cls, teacherId) => ({
+  id: cls.id,
+  name: cls.name,
+  displayNameArabic: cls.displayNameArabic ?? cls.name,
+  gradeLevel: cls.gradeLevel,
+  roomNumber: cls.roomNumber ?? '',
+  capacity: cls.capacity,
+  studentCount: cls._count.students,
+  isAdvisor: cls.classTeacherId === teacherId,
+});
+
+// What a teacher needs about a student in their class (no national ID / address)
+const ROSTER_SELECT = {
+  id: true,
+  studentCode: true,
+  fullNameArabic: true,
+  gender: true,
+  enrollmentStatus: true,
+  guardianName: true,
+  guardianPhone: true,
+};
+
+const toRosterDto = (student) => ({
+  id: student.id,
+  studentCode: student.studentCode,
+  fullName: student.fullNameArabic,
+  gender: student.gender,
+  enrollmentStatus: student.enrollmentStatus ?? '',
+  guardianName: student.guardianName ?? '',
+  guardianPhone: student.guardianPhone ?? '',
+});
 
 export class TeachersService {
   /** All teachers, A→Z. Teachers get a reduced view of their colleagues. */
@@ -153,6 +205,48 @@ export class TeachersService {
     const extra = await prisma.class.findMany({ where: { isActive: true }, select: { name: true } });
     const names = new Set([...STANDARD_CLASSES.map((cls) => cls.name), ...extra.map((cls) => cls.name)]);
     return [...names].sort();
+  }
+
+  /** The classes the admin assigned to this teacher, with how many students each has. */
+  static async getMyClasses(teacherId) {
+    const classes = await prisma.class.findMany({
+      where: myClassesWhere(teacherId),
+      select: MY_CLASS_SELECT,
+      orderBy: { name: 'asc' },
+    });
+    return classes.map((cls) => toMyClassDto(cls, teacherId));
+  }
+
+  /** One page of a class's students (A→Z). The class must be one of the teacher's own. */
+  static async getMyClassStudents(teacherId, classId, query) {
+    const { page, limit, skip, take } = parsePagination(query, 20, 100);
+    const search = typeof query.search === 'string' ? query.search.trim() : '';
+    const where = {
+      classId,
+      isActive: true,
+      ...(search && {
+        OR: [
+          { fullNameArabic: { contains: search, mode: 'insensitive' } },
+          { studentCode: { contains: search, mode: 'insensitive' } },
+        ],
+      }),
+    };
+
+    // All three in parallel (one wait instead of three); the students are only returned if the class is the teacher's
+    const [cls, total, students] = await Promise.all([
+      prisma.class.findFirst({ where: { id: classId, ...myClassesWhere(teacherId) }, select: MY_CLASS_SELECT }),
+      prisma.student.count({ where }),
+      prisma.student.findMany({ where, select: ROSTER_SELECT, orderBy: { fullNameArabic: 'asc' }, skip, take }),
+    ]);
+    if (!cls) {
+      throw AppError.notFound('الفصل غير موجود ضمن فصولك');
+    }
+
+    return {
+      class: toMyClassDto(cls, teacherId),
+      students: students.map(toRosterDto),
+      meta: buildPaginationMeta({ total, page, limit }),
+    };
   }
 
   // ---- helpers ----

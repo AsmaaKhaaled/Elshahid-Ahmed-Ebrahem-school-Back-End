@@ -4,7 +4,56 @@ import { prisma } from '../../config/database.js';
 import { StudentModel } from './students.model.js';
 import { AppError } from '../../shared/errors/app-error.js';
 
+// The school's only enrollment statuses
+export const STUDENT_STATUSES = ['منتظم', 'موقوف', 'منقول'];
+// Statuses that take a student off the class lists and disable their sign-in
+const INACTIVE_STATUSES = ['موقوف', 'منقول'];
+
+const assertValidStatus = (status) => {
+  if (!STUDENT_STATUSES.includes(status)) {
+    throw AppError.badRequest(`حالة القيد "${status}" غير صحيحة. الحالات المتاحة: ${STUDENT_STATUSES.join(' / ')}`);
+  }
+};
+
+// Grade level text -> its number, e.g. 'الصف الثاني الإعدادي' -> 2
+const gradeNumberOf = (gradeLevel) => {
+  const text = String(gradeLevel || '');
+  if (text.includes('الأول') || text.includes('الاول') || text.startsWith('1')) return 1;
+  if (text.includes('الثاني') || text.startsWith('2')) return 2;
+  if (text.includes('الثالث') || text.startsWith('3')) return 3;
+  return null;
+};
+
 export class StudentsService {
+  /**
+   * Finds the class a student belongs to. Accepts a class ID, a class name ('3/2' or 'فصل 3/2'),
+   * or just the section number (e.g. 2, as in the Excel template's "رقم الفصل") together with the grade level.
+   * Matches exactly only, so a student is never put in a look-alike class.
+   * @returns the class, or null when no class was given
+   */
+  static async resolveClass(classInput, gradeLevel) {
+    const input = String(classInput ?? '').trim();
+    if (!input) return null;
+
+    const byId = await prisma.class.findUnique({ where: { id: input } });
+    if (byId) return byId;
+
+    let name = input.replace(/^فصل\s*/, '').replace(/\s+/g, '');
+    if (/^\d+$/.test(name)) {
+      const gradeNumber = gradeNumberOf(gradeLevel);
+      if (!gradeNumber) {
+        throw AppError.badRequest(`رقم الفصل "${input}" يحتاج الصف الدراسي لتحديد الفصل`);
+      }
+      name = `${gradeNumber}/${Number(name)}`;
+    }
+
+    const byName = await prisma.class.findUnique({ where: { name } });
+    if (!byName) {
+      throw AppError.badRequest(`الفصل "${name}" غير موجود بالمدرسة`);
+    }
+    return byName;
+  }
+
   /**
    * Helper: Parse Egyptian National ID (14 digits)
    * Extracts gender ('MALE' | 'FEMALE') and date of birth ('YYYY-MM-DD')
@@ -101,45 +150,21 @@ export class StudentsService {
     const gender = data.gender ? data.gender.toUpperCase() : parsedGender || 'MALE';
     const dateOfBirth = data.dateOfBirth || parsedDob || null;
 
-    // 4. Resolve Class (accepts direct ID, or name like '1/1' or 'فصل 1/1')
+    // 4. Resolve Class (class ID, a name like '1/1' / 'فصل 1/1', or a section number + grade level)
     let resolvedClassId = null;
     let resolvedGradeLevel = (data.gradeLevel || '').trim() || null;
 
-    const classInput = (data.classId || data.className || '').trim();
-    if (classInput) {
-      // Try direct ID lookup first
-      let matchedClass = await prisma.class.findUnique({
-        where: { id: classInput },
-      });
-
-      // If not by direct ID, search by name or displayNameArabic
-      if (!matchedClass) {
-        const cleanName = classInput.replace(/^(فصل\s*)/, '').trim();
-        matchedClass = await prisma.class.findFirst({
-          where: {
-            OR: [
-              { name: cleanName },
-              { displayNameArabic: { contains: cleanName, mode: 'insensitive' } },
-            ],
-          },
-        });
-      }
-
-      if (matchedClass) {
-        resolvedClassId = matchedClass.id;
-        if (!resolvedGradeLevel) {
-          resolvedGradeLevel = matchedClass.gradeLevel || matchedClass.displayNameArabic;
-        }
-      } else {
-        // If they provided a raw ID, use it directly
-        resolvedClassId = classInput;
-      }
+    const matchedClass = await this.resolveClass(data.classId || data.className, resolvedGradeLevel);
+    if (matchedClass) {
+      resolvedClassId = matchedClass.id;
+      // The class decides the grade, so the two can never disagree
+      resolvedGradeLevel = matchedClass.gradeLevel || resolvedGradeLevel;
     }
 
     // 5. Determine Enrollment Status and Active State
     const enrollmentStatus = (data.enrollmentStatus || 'منتظم').trim();
-    const isInactiveStatus = ['محول', 'مفصول', 'INACTIVE'].includes(enrollmentStatus);
-    const isActive = data.isActive !== undefined ? data.isActive : !isInactiveStatus;
+    assertValidStatus(enrollmentStatus);
+    const isActive = data.isActive !== undefined ? data.isActive : !INACTIVE_STATUSES.includes(enrollmentStatus);
 
     // 6. Provision the User login account for the student
     const defaultPassword = 'Student@2026';
@@ -213,22 +238,17 @@ export class StudentsService {
 
     // Resolve class if changing class
     if (data.classId || data.className) {
-      const classInput = (data.classId || data.className).trim();
-      let matchedClass = await prisma.class.findUnique({ where: { id: classInput } });
-      if (!matchedClass) {
-        const cleanName = classInput.replace(/^(فصل\s*)/, '').trim();
-        matchedClass = await prisma.class.findFirst({
-          where: {
-            OR: [
-              { name: cleanName },
-              { displayNameArabic: { contains: cleanName, mode: 'insensitive' } },
-            ],
-          },
-        });
-      }
-      if (matchedClass) {
-        updatePayload.classId = matchedClass.id;
-      }
+      const matchedClass = await this.resolveClass(data.classId || data.className, data.gradeLevel);
+      updatePayload.classId = matchedClass.id;
+      updatePayload.gradeLevel = matchedClass.gradeLevel || data.gradeLevel;
+    }
+
+    // A transferred / dismissed / suspended student leaves the class lists and can't sign in
+    const statusChanged = typeof data.enrollmentStatus === 'string' && data.enrollmentStatus.trim();
+    if (statusChanged) {
+      updatePayload.enrollmentStatus = data.enrollmentStatus.trim();
+      assertValidStatus(updatePayload.enrollmentStatus);
+      updatePayload.isActive = !INACTIVE_STATUSES.includes(updatePayload.enrollmentStatus);
     }
 
     const updated = await StudentModel.update(id, updatePayload);
@@ -243,6 +263,7 @@ export class StudentsService {
       if (data.nationalId) userUpdate.nationalId = data.nationalId.trim();
       if (data.studentCode) userUpdate.studentCode = data.studentCode.trim();
       if (data.guardianPhone) userUpdate.phone = data.guardianPhone.trim();
+      if (statusChanged) userUpdate.status = updatePayload.isActive ? 'ACTIVE' : 'INACTIVE';
 
       if (Object.keys(userUpdate).length > 0) {
         await prisma.user.update({
@@ -565,62 +586,37 @@ export class StudentsService {
    * Generate an official Excel template for student enrollment
    */
   static generateExcelTemplate() {
+    // Same columns & order as the students table. The class is written in full, e.g. "2/3".
+    // Status: منتظم / موقوف / منقول (empty = منتظم).
     const headers = [
-      'الاسم رباعي (باللغة العربية)*',
-      'الرقم القومي للطالب (14 رقم)*',
+      'اسم الطالب رباعي',
+      'الرقم القومي للطالب',
+      'الصف الدراسي',
+      'الفصل',
+      'اسم ولي الأمر',
+      'هاتف ولي الأمر',
       'كود الطالب (اختياري)',
-      'الصف الدراسي*',
-      'الفصل*',
-      'اسم ولي الأمر*',
-      'هاتف ولي الأمر*',
-      'حالة القيد*',
+      'الحالة (اختياري)',
     ];
 
     const sampleRows = [
-      [
-        'عمر أحمد محمود إبراهيم',
-        '31105151234567',
-        'STD-2026-001',
-        'الصف الأول الإعدادي',
-        '1/1',
-        'أحمد محمود إبراهيم',
-        '01012345678',
-        'منتظم',
-      ],
-      [
-        'سارة علي حسن سالم',
-        '31208201234568',
-        '',
-        'الصف الثاني الإعدادي',
-        '2/1',
-        'علي حسن سالم',
-        '01123456789',
-        'منتظم',
-      ],
-      [
-        'يوسف محمد عبد الله الشريف',
-        '31010101234569',
-        '',
-        'الصف الثالث الإعدادي',
-        '3/2',
-        'محمد عبد الله الشريف',
-        '01234567890',
-        'منتظم',
-      ],
+      ['عمر أحمد محمود إبراهيم', '31105151234567', 'الصف الأول الإعدادي', '1/1', 'أحمد محمود إبراهيم', '01012345678', '', ''],
+      ['سارة علي حسن سالم', '31208201234568', 'الصف الثاني الإعدادي', '2/3', 'علي حسن سالم', '01123456789', '', ''],
+      ['يوسف محمد عبد الله الشريف', '31010101234569', 'الصف الثالث الإعدادي', '3/2', 'محمد عبد الله الشريف', '01234567890', '', 'منتظم'],
     ];
 
     const data = [headers, ...sampleRows];
     const ws = xlsx.utils.aoa_to_sheet(data);
 
     ws['!cols'] = [
-      { wch: 30 },
+      { wch: 34 },
       { wch: 22 },
-      { wch: 18 },
-      { wch: 22 },
+      { wch: 24 },
       { wch: 12 },
-      { wch: 25 },
+      { wch: 28 },
       { wch: 18 },
-      { wch: 14 },
+      { wch: 20 },
+      { wch: 16 },
     ];
 
     const wb = xlsx.utils.book_new();

@@ -66,10 +66,10 @@ export const teacherAttendanceValidation = {
 
   /**
    * GET /records & /export
-   * Query: { from?, to?, teacherId?, status?, page?, pageSize? }
+   * Query: { from?, to?, teacherId?, status?, page?, limit?, pageSize? (old name for limit) }
    */
   archiveQuery: (req) => {
-    const { from, to, status, page, pageSize } = req.query || {};
+    const { from, to, status, page, limit, pageSize } = req.query || {};
     const errors = [];
     if (from !== undefined && !isValidDate(from)) errors.push({ field: 'from', message: 'from must be YYYY-MM-DD' });
     if (to !== undefined && !isValidDate(to)) errors.push({ field: 'to', message: 'to must be YYYY-MM-DD' });
@@ -80,7 +80,11 @@ export const teacherAttendanceValidation = {
     if (page !== undefined && !(Number.isInteger(Number(page)) && Number(page) >= 1)) {
       errors.push({ field: 'page', message: 'page must be a positive integer' });
     }
-    if (pageSize !== undefined && !(Number.isInteger(Number(pageSize)) && Number(pageSize) >= 1 && Number(pageSize) <= 100)) {
+    const isPageSize = (value) => Number.isInteger(Number(value)) && Number(value) >= 1 && Number(value) <= 100;
+    if (limit !== undefined && !isPageSize(limit)) {
+      errors.push({ field: 'limit', message: 'limit must be between 1 and 100' });
+    }
+    if (pageSize !== undefined && !isPageSize(pageSize)) {
       errors.push({ field: 'pageSize', message: 'pageSize must be between 1 and 100' });
     }
     return result(errors);

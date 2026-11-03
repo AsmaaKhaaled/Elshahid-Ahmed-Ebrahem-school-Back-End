@@ -59,7 +59,7 @@ export class TeacherAttendanceController {
   }
 
   /**
-   * GET /api/v1/teacher-attendance/records?from&to&teacherId&status&page&pageSize
+   * GET /api/v1/teacher-attendance/records?from&to&teacherId&status&page&limit (pageSize = old name for limit)
    */
   static async getArchive(req, res, next) {
     try {
