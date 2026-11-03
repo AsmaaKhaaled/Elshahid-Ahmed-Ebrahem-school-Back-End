@@ -1,6 +1,44 @@
 import { TeachersService } from './teachers.service.js';
+import { AppError } from '../../shared/errors/app-error.js';
+
+// The teacher profile behind the signed-in TEACHER account
+const myTeacherId = (req) => {
+  const teacherId = req.user.teacherProfile?.id;
+  if (!teacherId) {
+    throw AppError.forbidden('هذا الحساب غير مرتبط بملف معلم');
+  }
+  return teacherId;
+};
 
 export class TeachersController {
+  /**
+   * GET /api/v1/teachers/me/classes
+   */
+  static async getMyClasses(req, res, next) {
+    try {
+      const classes = await TeachersService.getMyClasses(myTeacherId(req));
+      return res.status(200).json({ status: 'success', results: classes.length, data: { classes } });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/v1/teachers/me/classes/:classId/students?page&limit&search
+   */
+  static async getMyClassStudents(req, res, next) {
+    try {
+      const { class: cls, students, meta } = await TeachersService.getMyClassStudents(
+        myTeacherId(req),
+        req.params.classId,
+        req.query
+      );
+      return res.status(200).json({ status: 'success', data: { class: cls, students }, meta });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   /**
    * GET /api/v1/teachers
    */

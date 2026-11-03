@@ -575,6 +575,28 @@ const paths = {
       remove: ADMIN,
     },
   }),
+  '/api/v1/teachers/me/classes': {
+    get: {
+      tags: ['Teachers'],
+      summary: "The signed-in teacher's classes (assigned by the admin)",
+      description: `${roles('TEACHER')}\n\nEach class has \`studentCount\` and \`isAdvisor\`.`,
+      responses: responses(200, 401, 403),
+    },
+  },
+  '/api/v1/teachers/me/classes/{classId}/students': {
+    get: {
+      tags: ['Teachers'],
+      summary: 'Students of one of my classes (paginated, A→Z)',
+      description: `${roles('TEACHER')}\n\nReturns 404 when the class isn't one of the teacher's own.`,
+      parameters: [
+        idParam('classId', 'Class ID'),
+        queryParam('page', 'Page number (default 1)', { type: 'integer', minimum: 1 }),
+        queryParam('limit', 'Page size (default 20, max 100)', { type: 'integer', minimum: 1, maximum: 100 }),
+        queryParam('search', 'Student name or code'),
+      ],
+      responses: responses(200, 401, 403, 404),
+    },
+  },
   '/api/v1/teachers/{id}/subjects': {
     patch: {
       tags: ['Teachers'],

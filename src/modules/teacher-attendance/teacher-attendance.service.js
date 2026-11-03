@@ -1,6 +1,7 @@
 import { prisma } from '../../config/database.js';
 import { AppError } from '../../shared/errors/app-error.js';
 import { arabicSortKey, compareArabic } from '../../shared/utils/arabic.js';
+import { buildPaginationMeta, parsePagination } from '../../shared/utils/pagination.js';
 import { MAX_HOLIDAY_DAYS } from './teacher-attendance.validation.js';
 
 const SCHOOL_TIME_ZONE = 'Africa/Cairo';
@@ -10,6 +11,7 @@ const ON_DUTY = ['PRESENT', 'LATE'];
 // Upper bound for one Excel / PDF export (about a full school year of a large staff)
 const MAX_EXPORT_ROWS = 20000;
 const DEFAULT_PAGE_SIZE = 10;
+const MAX_PAGE_SIZE = 100;
 
 const RECORD_SELECT = {
   teacherId: true,
@@ -180,8 +182,12 @@ export class TeacherAttendanceService {
   static async getArchive(query) {
     await this.closeFinishedDays();
 
-    const page = Number(query.page) || 1;
-    const pageSize = Number(query.pageSize) || DEFAULT_PAGE_SIZE;
+    // `limit` is the standard name; `pageSize` is still accepted from older callers
+    const { page, limit, skip, take } = parsePagination(
+      { page: query.page, limit: query.limit ?? query.pageSize },
+      DEFAULT_PAGE_SIZE,
+      MAX_PAGE_SIZE
+    );
     const where = await this.archiveWhere(query);
 
     const [total, rows, groups] = await Promise.all([
@@ -190,8 +196,8 @@ export class TeacherAttendanceService {
         where,
         select: { id: true, date: true, ...RECORD_SELECT },
         orderBy: [{ date: 'desc' }, { teacherSortKey: 'asc' }],
-        skip: (page - 1) * pageSize,
-        take: pageSize,
+        skip,
+        take,
       }),
       prisma.teacherAttendance.groupBy({ by: ['status'], where, _count: { _all: true } }),
     ]);
@@ -199,7 +205,8 @@ export class TeacherAttendanceService {
     return {
       items: rows.map((row) => ({ id: row.id, date: row.date, ...toRecordDto(row) })),
       summary: Object.fromEntries(groups.map((group) => [group.status, group._count._all])),
-      meta: { page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) },
+      // pageSize mirrors limit for callers that read the old name
+      meta: { ...buildPaginationMeta({ total, page, limit }), pageSize: limit },
     };
   }
 
