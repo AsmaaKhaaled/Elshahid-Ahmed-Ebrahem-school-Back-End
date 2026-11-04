@@ -58,6 +58,7 @@ model User {
   announcedExams             Exam[]                 @relation("ExamAnnouncer")
   uploadedMaterials          Material[]             @relation("MaterialUploader")
   authoredAnnouncements      Announcement[]         @relation("AnnouncementAuthor")
+  announcementReads          AnnouncementRead[]
   recordedTeacherAttendances TeacherAttendance[]    @relation("TeacherAttendanceRecorder")
   closedAttendanceDays       TeacherAttendanceDay[] @relation("TeacherAttendanceDayCloser")
   createdHolidays            SchoolHoliday[]        @relation("SchoolHolidayCreator")
@@ -440,6 +441,13 @@ model Announcement {
   id             String           @id @default(cuid())
   title          String
   content        String
+  category       String           @default("إداري")
+  audiences      String[]         @default(["TEACHER", "STUDENT", "PARENT"])
+  authorName     String?          @default("إدارة المدرسة") @map("author_name")
+  expiresAt      String?          @map("expires_at") // YYYY-MM-DD
+  pinned         Boolean          @default(false)
+  attachmentUrl  String?          @map("attachment_url")
+  attachmentName String?          @map("attachment_name")
   type           AnnouncementType @default(SCHOOL_WIDE)
   targetAudience TargetAudience   @default(ALL)
   priority       Priority         @default(MEDIUM)
@@ -453,8 +461,23 @@ model Announcement {
 
   class  Class? @relation(fields: [classId], references: [id], onDelete: SetNull)
   author User?  @relation("AnnouncementAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  reads  AnnouncementRead[]
 
   @@map("announcements")
+}
+
+model AnnouncementRead {
+  id             String       @id @default(cuid())
+  announcementId String       @map("announcement_id")
+  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  userId         String       @map("user_id")
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  readAt         DateTime     @default(now()) @map("read_at")
+
+  @@unique([announcementId, userId], name: "unique_announcement_user_read")
+  @@index([userId])
+  @@index([announcementId])
+  @@map("announcement_reads")
 }
 
 // ==========================================

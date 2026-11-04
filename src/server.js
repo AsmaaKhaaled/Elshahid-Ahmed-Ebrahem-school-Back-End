@@ -1,6 +1,8 @@
+import http from 'http';
 import app from './app.js';
 import { env } from './config/env.js';
 import { database } from './config/database.js';
+import { initSocket } from './config/socket.js';
 
 let server;
 
@@ -9,11 +11,15 @@ async function startServer() {
     // Initialize Database
     await database.connect();
 
-    // Start HTTP Server
-    server = app.listen(env.PORT, () => {
+    // Start HTTP Server with Socket.io
+    const httpServer = http.createServer(app);
+    initSocket(httpServer);
+
+    server = httpServer.listen(env.PORT, () => {
       console.log(`======================================================`);
       console.log(`Server is running in ${env.NODE_ENV} mode`);
       console.log(`URL: http://localhost:${env.PORT}`);
+      console.log(`WebSocket: ws://localhost:${env.PORT}`);
       console.log(`Health Check: http://localhost:${env.PORT}/api/health`);
       console.log(`======================================================`);
     });
@@ -52,4 +58,3 @@ process.on('uncaughtException', (error) => {
 });
 
 startServer();
-
