@@ -307,6 +307,267 @@ async function main() {
   });
   console.log(`✅ Student Account (عمر طارق): StudentCode = ${studentUser.studentCode} | Class = ${seededClasses['3/2'].displayNameArabic}`);
 
+  // ==========================================
+  // 8. Seed Timetable Schedules (جداول الحصص الأسبوعية ومنع التعارضات)
+  // ==========================================
+  const TERM_ID = '2026-2027-T1';
+  console.log(`\n🗓️ Seeding Weekly Timetable Periods for Term [${TERM_ID}]...`);
+
+  const teachers = await prisma.teacher.findMany();
+  const teacherMap = new Map(teachers.map((t) => [t.teacherCode, t]));
+
+  const neshwa = teacherMap.get('TCH-001');
+  const ahmed = teacherMap.get('TCH-D01');
+  const mona = teacherMap.get('TCH-D02');
+  const mohamed = teacherMap.get('TCH-D03');
+  const hala = teacherMap.get('TCH-D04');
+  const tarek = teacherMap.get('TCH-D05');
+  const samar = teacherMap.get('TCH-D06');
+  const khaled = teacherMap.get('TCH-D07');
+  const eman = teacherMap.get('TCH-D08');
+  const wael = teacherMap.get('TCH-D09');
+
+  const slotsToCreate = [];
+  const teacherOccupied = new Set();
+  const classOccupied = new Set();
+
+  function addPeriod(teacher, className, dayOfWeek, period, subject, room = null) {
+    if (!teacher) return;
+    const cls = seededClasses[className];
+    if (!cls) return;
+
+    const teacherKey = `${teacher.id}-${dayOfWeek}-${period}`;
+    const classKey = `${cls.id}-${dayOfWeek}-${period}`;
+
+    if (teacherOccupied.has(teacherKey) || classOccupied.has(classKey)) {
+      return;
+    }
+
+    teacherOccupied.add(teacherKey);
+    classOccupied.add(classKey);
+
+    slotsToCreate.push({
+      termId: TERM_ID,
+      teacherId: teacher.id,
+      classId: cls.id,
+      dayOfWeek,
+      period,
+      subject,
+      room: room || cls.roomNumber || null,
+    });
+  }
+
+  // --- Day 0 (الأحد) ---
+  addPeriod(ahmed, '1/1', 0, 1, 'اللغة العربية');
+  addPeriod(tarek, '1/2', 0, 1, 'الرياضيات');
+  addPeriod(mona, '2/1', 0, 1, 'اللغة الإنجليزية');
+  addPeriod(neshwa, '3/2', 0, 1, 'الرياضيات');
+  addPeriod(mohamed, '3/1', 0, 1, 'العلوم');
+  addPeriod(hala, '1/3', 0, 1, 'الدراسات الاجتماعية');
+
+  addPeriod(ahmed, '1/1', 0, 2, 'اللغة العربية');
+  addPeriod(tarek, '1/3', 0, 2, 'الرياضيات');
+  addPeriod(samar, '2/1', 0, 2, 'التربية الدينية');
+  addPeriod(mohamed, '3/2', 0, 2, 'العلوم');
+  addPeriod(neshwa, '3/3', 0, 2, 'الرياضيات');
+  addPeriod(mona, '2/2', 0, 2, 'اللغة الإنجليزية');
+
+  addPeriod(tarek, '1/1', 0, 3, 'الرياضيات');
+  addPeriod(ahmed, '1/2', 0, 3, 'اللغة العربية');
+  addPeriod(hala, '2/3', 0, 3, 'الدراسات الاجتماعية');
+  addPeriod(mona, '3/2', 0, 3, 'اللغة الإنجليزية');
+  addPeriod(mohamed, '3/3', 0, 3, 'العلوم');
+  addPeriod(neshwa, '3/4', 0, 3, 'الرياضيات');
+
+  addPeriod(ahmed, '3/2', 0, 4, 'اللغة العربية');
+  addPeriod(tarek, '1/4', 0, 4, 'الرياضيات');
+  addPeriod(mona, '3/3', 0, 4, 'اللغة الإنجليزية');
+  addPeriod(mohamed, '3/4', 0, 4, 'العلوم');
+  addPeriod(eman, '1/2', 0, 4, 'التربية الفنية');
+  addPeriod(samar, '2/2', 0, 4, 'التربية الدينية');
+
+  addPeriod(khaled, '3/2', 0, 5, 'الحاسب الآلي', 'معمل التطوير 1');
+  addPeriod(neshwa, '3/3', 0, 5, 'الرياضيات');
+  addPeriod(ahmed, '1/2', 0, 5, 'اللغة العربية');
+  addPeriod(wael, '3/4', 0, 5, 'التربية الرياضية', 'الملعب');
+  addPeriod(tarek, '1/1', 0, 5, 'الرياضيات');
+  addPeriod(hala, '1/4', 0, 5, 'الدراسات الاجتماعية');
+
+  addPeriod(neshwa, '3/2', 0, 6, 'الرياضيات');
+  addPeriod(khaled, '3/3', 0, 6, 'الحاسب الآلي', 'معمل التطوير 1');
+  addPeriod(mohamed, '3/1', 0, 6, 'العلوم');
+  addPeriod(samar, '2/3', 0, 6, 'التربية الدينية');
+  addPeriod(eman, '2/2', 0, 6, 'التربية الفنية');
+
+  addPeriod(mohamed, '3/2', 0, 7, 'العلوم', 'معمل العلوم');
+  addPeriod(samar, '2/4', 0, 7, 'التربية الدينية');
+  addPeriod(wael, '3/1', 0, 7, 'التربية الرياضية', 'الملعب');
+  addPeriod(eman, '3/4', 0, 7, 'التربية الفنية');
+
+  // --- Day 1 (الإثنين) ---
+  addPeriod(mona, '3/2', 1, 1, 'اللغة الإنجليزية');
+  addPeriod(neshwa, '3/3', 1, 1, 'الرياضيات');
+  addPeriod(ahmed, '1/2', 1, 1, 'اللغة العربية');
+  addPeriod(tarek, '1/1', 1, 1, 'الرياضيات');
+  addPeriod(mohamed, '3/4', 1, 1, 'العلوم');
+
+  addPeriod(neshwa, '3/2', 1, 2, 'الرياضيات');
+  addPeriod(mohamed, '3/3', 1, 2, 'العلوم');
+  addPeriod(ahmed, '1/1', 1, 2, 'اللغة العربية');
+  addPeriod(mona, '2/1', 1, 2, 'اللغة الإنجليزية');
+  addPeriod(tarek, '1/4', 1, 2, 'الرياضيات');
+
+  addPeriod(ahmed, '3/2', 1, 3, 'اللغة العربية');
+  addPeriod(neshwa, '3/4', 1, 3, 'الرياضيات');
+  addPeriod(mohamed, '3/1', 1, 3, 'العلوم');
+  addPeriod(mona, '2/2', 1, 3, 'اللغة الإنجليزية');
+  addPeriod(tarek, '1/2', 1, 3, 'الرياضيات');
+
+  addPeriod(mohamed, '3/2', 1, 4, 'العلوم');
+  addPeriod(ahmed, '1/1', 1, 4, 'اللغة العربية');
+  addPeriod(mona, '3/3', 1, 4, 'اللغة الإنجليزية');
+  addPeriod(samar, '2/1', 1, 4, 'التربية الدينية');
+  addPeriod(hala, '1/3', 1, 4, 'الدراسات الاجتماعية');
+
+  addPeriod(khaled, '3/2', 1, 5, 'الحاسب الآلي', 'معمل التطوير 1');
+  addPeriod(neshwa, '3/3', 1, 5, 'الرياضيات');
+  addPeriod(tarek, '1/3', 1, 5, 'الرياضيات');
+  addPeriod(hala, '2/3', 1, 5, 'الدراسات الاجتماعية');
+  addPeriod(wael, '3/4', 1, 5, 'التربية الرياضية', 'الملعب');
+
+  addPeriod(ahmed, '3/2', 1, 6, 'اللغة العربية');
+  addPeriod(neshwa, '3/4', 1, 6, 'الرياضيات');
+  addPeriod(samar, '2/2', 1, 6, 'التربية الدينية');
+  addPeriod(tarek, '1/1', 1, 6, 'الرياضيات');
+
+  addPeriod(neshwa, '3/2', 1, 7, 'الرياضيات');
+  addPeriod(samar, '2/4', 1, 7, 'التربية الدينية');
+  addPeriod(mohamed, '3/4', 1, 7, 'العلوم');
+
+  // --- Day 2 (الثلاثاء) ---
+  addPeriod(neshwa, '3/2', 2, 1, 'الرياضيات');
+  addPeriod(ahmed, '1/1', 2, 1, 'اللغة العربية');
+  addPeriod(tarek, '1/3', 2, 1, 'الرياضيات');
+  addPeriod(mohamed, '3/3', 2, 1, 'العلوم');
+  addPeriod(mona, '2/1', 2, 1, 'اللغة الإنجليزية');
+
+  addPeriod(mona, '3/2', 2, 2, 'اللغة الإنجليزية');
+  addPeriod(ahmed, '1/2', 2, 2, 'اللغة العربية');
+  addPeriod(neshwa, '3/4', 2, 2, 'الرياضيات');
+  addPeriod(tarek, '1/4', 2, 2, 'الرياضيات');
+  addPeriod(mohamed, '3/1', 2, 2, 'العلوم');
+
+  addPeriod(ahmed, '3/2', 2, 3, 'اللغة العربية');
+  addPeriod(neshwa, '3/3', 2, 3, 'الرياضيات');
+  addPeriod(mona, '2/2', 2, 3, 'اللغة الإنجليزية');
+  addPeriod(tarek, '1/2', 2, 3, 'الرياضيات');
+  addPeriod(hala, '1/4', 2, 3, 'الدراسات الاجتماعية');
+
+  addPeriod(mohamed, '3/2', 2, 4, 'العلوم');
+  addPeriod(samar, '2/3', 2, 4, 'التربية الدينية');
+  addPeriod(tarek, '1/1', 2, 4, 'الرياضيات');
+  addPeriod(mona, '3/3', 2, 4, 'اللغة الإنجليزية');
+
+  addPeriod(neshwa, '3/2', 2, 5, 'الرياضيات');
+  addPeriod(khaled, '3/3', 2, 5, 'الحاسب الآلي', 'معمل التطوير 1');
+  addPeriod(mohamed, '3/4', 2, 5, 'العلوم');
+  addPeriod(hala, '2/3', 2, 5, 'الدراسات الاجتماعية');
+  addPeriod(eman, '1/2', 2, 5, 'التربية الفنية');
+
+  addPeriod(mona, '3/2', 2, 6, 'اللغة الإنجليزية');
+  addPeriod(ahmed, '1/2', 2, 6, 'اللغة العربية');
+  addPeriod(neshwa, '3/4', 2, 6, 'الرياضيات');
+  addPeriod(samar, '2/1', 2, 6, 'التربية الدينية');
+
+  addPeriod(ahmed, '3/2', 2, 7, 'اللغة العربية');
+  addPeriod(mohamed, '3/3', 2, 7, 'العلوم');
+  addPeriod(wael, '3/1', 2, 7, 'التربية الرياضية', 'الملعب');
+
+  // --- Day 3 (الأربعاء) ---
+  addPeriod(mohamed, '3/2', 3, 1, 'العلوم');
+  addPeriod(neshwa, '3/3', 3, 1, 'الرياضيات');
+  addPeriod(ahmed, '1/2', 3, 1, 'اللغة العربية');
+  addPeriod(tarek, '1/4', 3, 1, 'الرياضيات');
+  addPeriod(mona, '2/2', 3, 1, 'اللغة الإنجليزية');
+
+  addPeriod(ahmed, '3/2', 3, 2, 'اللغة العربية');
+  addPeriod(mona, '3/3', 3, 2, 'اللغة الإنجليزية');
+  addPeriod(tarek, '1/1', 3, 2, 'الرياضيات');
+  addPeriod(neshwa, '3/4', 3, 2, 'الرياضيات');
+  addPeriod(mohamed, '3/1', 3, 2, 'العلوم');
+
+  addPeriod(neshwa, '3/2', 3, 3, 'الرياضيات');
+  addPeriod(ahmed, '1/1', 3, 3, 'اللغة العربية');
+  addPeriod(tarek, '1/3', 3, 3, 'الرياضيات');
+  addPeriod(mohamed, '3/4', 3, 3, 'العلوم');
+  addPeriod(mona, '2/1', 3, 3, 'اللغة الإنجليزية');
+
+  addPeriod(mona, '3/2', 3, 4, 'اللغة الإنجليزية');
+  addPeriod(neshwa, '3/3', 3, 4, 'الرياضيات');
+  addPeriod(ahmed, '1/2', 3, 4, 'اللغة العربية');
+  addPeriod(samar, '2/4', 3, 4, 'التربية الدينية');
+  addPeriod(hala, '1/3', 3, 4, 'الدراسات الاجتماعية');
+
+  addPeriod(khaled, '3/2', 3, 5, 'الحاسب الآلي', 'معمل التطوير 1');
+  addPeriod(mohamed, '3/3', 3, 5, 'العلوم');
+  addPeriod(ahmed, '1/1', 3, 5, 'اللغة العربية');
+  addPeriod(tarek, '1/2', 3, 5, 'الرياضيات');
+  addPeriod(eman, '3/4', 3, 5, 'التربية الفنية');
+
+  addPeriod(neshwa, '3/2', 3, 6, 'الرياضيات');
+  addPeriod(samar, '2/2', 3, 6, 'التربية الدينية');
+  addPeriod(hala, '2/3', 3, 6, 'الدراسات الاجتماعية');
+  addPeriod(mona, '3/3', 3, 6, 'اللغة الإنجليزية');
+
+  addPeriod(mohamed, '3/2', 3, 7, 'العلوم');
+  addPeriod(neshwa, '3/4', 3, 7, 'الرياضيات');
+  addPeriod(tarek, '1/4', 3, 7, 'الرياضيات');
+
+  // --- Day 4 (الخميس) ---
+  addPeriod(ahmed, '3/2', 4, 1, 'اللغة العربية');
+  addPeriod(neshwa, '3/4', 4, 1, 'الرياضيات');
+  addPeriod(tarek, '1/2', 4, 1, 'الرياضيات');
+  addPeriod(mona, '2/1', 4, 1, 'اللغة الإنجليزية');
+  addPeriod(mohamed, '3/1', 4, 1, 'العلوم');
+
+  addPeriod(neshwa, '3/2', 4, 2, 'الرياضيات');
+  addPeriod(ahmed, '1/1', 4, 2, 'اللغة العربية');
+  addPeriod(mona, '3/3', 4, 2, 'اللغة الإنجليزية');
+  addPeriod(tarek, '1/3', 4, 2, 'الرياضيات');
+  addPeriod(mohamed, '3/4', 4, 2, 'العلوم');
+
+  addPeriod(mohamed, '3/2', 4, 3, 'العلوم');
+  addPeriod(neshwa, '3/3', 4, 3, 'الرياضيات');
+  addPeriod(ahmed, '1/2', 4, 3, 'اللغة العربية');
+  addPeriod(tarek, '1/1', 4, 3, 'الرياضيات');
+  addPeriod(mona, '2/2', 4, 3, 'اللغة الإنجليزية');
+
+  addPeriod(mona, '3/2', 4, 4, 'اللغة الإنجليزية');
+  addPeriod(mohamed, '3/3', 4, 4, 'العلوم');
+  addPeriod(ahmed, '1/1', 4, 4, 'اللغة العربية');
+  addPeriod(neshwa, '3/4', 4, 4, 'الرياضيات');
+  addPeriod(samar, '2/3', 4, 4, 'التربية الدينية');
+
+  addPeriod(ahmed, '3/2', 4, 5, 'اللغة العربية');
+  addPeriod(neshwa, '3/3', 4, 5, 'الرياضيات');
+  addPeriod(hala, '1/4', 4, 5, 'الدراسات الاجتماعية');
+  addPeriod(eman, '2/2', 4, 5, 'التربية الفنية');
+
+  addPeriod(neshwa, '3/2', 4, 6, 'الرياضيات');
+  addPeriod(khaled, '3/3', 4, 6, 'الحاسب الآلي', 'معمل التطوير 1');
+  addPeriod(samar, '2/1', 4, 6, 'التربية الدينية');
+  addPeriod(wael, '3/4', 4, 6, 'التربية الرياضية', 'الملعب');
+
+  addPeriod(mona, '3/2', 4, 7, 'اللغة الإنجليزية');
+  addPeriod(samar, '2/4', 4, 7, 'التربية الدينية');
+  addPeriod(ahmed, '1/2', 4, 7, 'اللغة العربية');
+
+  // Clean & batch create
+  await prisma.timetablePeriod.deleteMany({ where: { termId: TERM_ID } });
+  const seededPeriods = await prisma.timetablePeriod.createMany({ data: slotsToCreate });
+  console.log(`✅ Seeded ${seededPeriods.count} weekly timetable periods for Term ${TERM_ID}.`);
+
+
   console.log('\n🎉 Database seeding with 12 preparatory classes completed successfully!');
 }
 

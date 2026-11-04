@@ -139,6 +139,7 @@ model Teacher {
   subjects          Subject[]           @relation("TeacherSubjects")
   classes           Class[]             @relation("TeacherClasses")
   timetableEntries  Timetable[]
+  timetablePeriods  TimetablePeriod[]
   attendanceRecords TeacherAttendance[]
 
   @@map("teachers")
@@ -164,6 +165,8 @@ model Class {
   assignedTeachers Teacher[]      @relation("TeacherClasses")
   students         Student[]
   timetableEntries Timetable[]
+  timetablePeriods TimetablePeriod[]
+
   materials        Material[]
   attendances      Attendance[]
   exams            Exam[]
@@ -190,6 +193,7 @@ model Subject {
 
   teachers         Teacher[]   @relation("TeacherSubjects")
   timetableEntries Timetable[]
+
   materials        Material[]
   exams            Exam[]
   grades           Grade[]
@@ -232,6 +236,50 @@ model Timetable {
   @@index([teacherId])
   @@index([subjectId])
   @@map("timetable")
+}
+
+model TimetablePeriod {
+  id          String   @id @default(uuid())
+  
+  // الترم الدراسي (مثال: "2026-2027-T1")
+  termId      String   @map("term_id")
+  
+  // اليوم الدراسي: 0 = الأحد, 1 = الإثنين, 2 = الثلاثاء, 3 = الأربعاء, 4 = الخميس
+  dayOfWeek   Int      @map("day_of_week") // 0 to 4
+  
+  // رقم الحصة: من 1 إلى 7
+  period      Int      // 1 to 7
+  
+  // المعلم المسؤول
+  teacherId   String   @map("teacher_id")
+  teacher     Teacher  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  
+  // الفصل الدراسي
+  classId     String   @map("class_id")
+  class       Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  
+  // المادة الدراسية (مثال: "اللغة العربية", "الرياضيات")
+  subject     String
+  
+  // القاعة / المعمل (اختياري)
+  room        String?  // مثال: "101", "معمل العلوم"
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // ==========================================
+  // القيود الحاسمة لمنع التعارضات (Unique Indexes)
+  // ==========================================
+
+  // 1. يمنع وجود حصتين لنفس الفصل في نفس اليوم والحصة لنفس الترم
+  @@unique([termId, classId, dayOfWeek, period], name: "unique_class_period_slot")
+
+  // 2. يمنع وجود حصتين لنفس المعلم في نفس اليوم والحصة لنفس الترم
+  @@unique([termId, teacherId, dayOfWeek, period], name: "unique_teacher_period_slot")
+
+  @@index([termId, teacherId])
+  @@index([termId, classId])
+  @@map("timetable_periods")
 }
 
 // ==========================================

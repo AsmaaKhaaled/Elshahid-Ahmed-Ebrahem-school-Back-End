@@ -38,9 +38,12 @@ export const errorHandler = (err, req, res, next) => {
   }
 
   return res.status(statusCode).json({
+    status: `${statusCode}`.startsWith('4') ? 'fail' : 'error',
     success: false,
     statusCode,
     message,
+    ...(err.code && { code: err.code }),
+    ...(err.conflict && { conflict: err.conflict }),
     ...(details && { errors: details }),
     ...(env.NODE_ENV === 'development' && { stack: err.stack }),
   });
