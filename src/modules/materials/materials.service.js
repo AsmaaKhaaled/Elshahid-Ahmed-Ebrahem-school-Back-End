@@ -1,9 +1,13 @@
 import { MaterialModel } from './materials.model.js';
 import { AppError } from '../../shared/errors/app-error.js';
+import { buildPaginationMeta, parsePagination } from '../../shared/utils/pagination.js';
 
 export class MaterialsService {
+  /** One page (page & limit, default 20, at most 100) instead of the whole table. */
   static async getMaterials(query) {
-    return MaterialModel.findAll(query);
+    const { page, limit, skip, take } = parsePagination(query, 20, 100);
+    const { total, items } = await MaterialModel.findPage(query, { skip, take });
+    return { items, meta: buildPaginationMeta({ total, page, limit }) };
   }
 
   static async getMaterialById(id) {

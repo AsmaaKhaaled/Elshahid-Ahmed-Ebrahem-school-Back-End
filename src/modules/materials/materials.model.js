@@ -1,15 +1,17 @@
 import { prisma } from '../../config/database.js';
 
 export class MaterialModel {
-  static async findAll({ subjectId, classId, type, month, search } = {}) {
+  static whereOf({ subjectId, classId, type, month, search } = {}) {
     const where = {};
+    // Each condition is its own AND item: the class filter and the search both need an OR
+    const and = [];
 
     if (subjectId) {
       where.subjectId = subjectId;
     }
 
     if (classId) {
-      where.OR = [{ classId }, { classId: null }];
+      and.push({ OR: [{ classId }, { classId: null }] });
     }
 
     if (type) {
@@ -21,21 +23,48 @@ export class MaterialModel {
     }
 
     if (search) {
-      where.OR = [
-        { title: { contains: search, mode: 'insensitive' } },
-        { description: { contains: search, mode: 'insensitive' } },
-      ];
+      and.push({
+        OR: [
+          { title: { contains: search, mode: 'insensitive' } },
+          { description: { contains: search, mode: 'insensitive' } },
+        ],
+      });
     }
 
+    if (and.length) where.AND = and;
+    return where;
+  }
+
+  static listInclude() {
+    return {
+      subject: { select: { id: true, code: true, nameArabic: true } },
+      class: { select: { id: true, name: true } },
+      uploader: { select: { id: true, name: true, role: true } },
+    };
+  }
+
+  static async findAll(filters = {}) {
     return prisma.material.findMany({
-      where,
-      include: {
-        subject: { select: { id: true, code: true, nameArabic: true } },
-        class: { select: { id: true, name: true } },
-        uploader: { select: { id: true, name: true, role: true } },
-      },
+      where: this.whereOf(filters),
+      include: this.listInclude(),
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  /** One page of materials, newest first, with the total for the page count. */
+  static async findPage(filters = {}, { skip, take }) {
+    const where = this.whereOf(filters);
+    const [total, items] = await Promise.all([
+      prisma.material.count({ where }),
+      prisma.material.findMany({
+        where,
+        include: this.listInclude(),
+        orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+        skip,
+        take,
+      }),
+    ]);
+    return { total, items };
   }
 
   static async findById(id) {

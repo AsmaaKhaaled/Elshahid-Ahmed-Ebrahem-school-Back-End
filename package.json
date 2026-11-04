@@ -12,7 +12,9 @@
     "prisma:studio": "prisma studio",
     "prisma:seed": "node prisma/seed.js",
     "seed:demo": "node prisma/seed-demo.js",
-    "seed:demo:clean": "node prisma/seed-demo.js --clean"
+    "seed:demo:clean": "node prisma/seed-demo.js --clean",
+    "seed:curricula": "node prisma/seed-curricula.js",
+    "seed:curricula:clean": "node prisma/seed-curricula.js --clean"
   },
   "prisma": {
     "seed": "node prisma/seed.js"

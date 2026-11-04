@@ -140,6 +140,7 @@ model Teacher {
   classes           Class[]             @relation("TeacherClasses")
   timetableEntries  Timetable[]
   attendanceRecords TeacherAttendance[]
+  curricula         Curriculum[]
 
   @@map("teachers")
 }
@@ -479,4 +480,87 @@ model SchoolHoliday {
 
   @@index([startDate, endDate])
   @@map("school_holidays")
+}
+
+// ==========================================
+// 12. Curricula (المناهج والمواد الدراسية)
+// ==========================================
+// Each teacher uploads the ministry curriculum of the subjects they teach (textbook, plan,
+// sample exams... as files or links) and writes its plan & objectives week by week.
+// Students see the curricula of their own class, without the teacher-only files and the plan.
+
+enum CurriculumFileKind {
+  BOOK
+  PLAN
+  EXAMS
+  GUIDE
+  OTHER
+}
+
+model Curriculum {
+  id           String   @id @default(cuid())
+  teacherId    String
+  // Arabic subject name, as in Teacher.teachingSubjects (e.g. "الرياضيات")
+  subject      String
+  // "G1" | "G2" | "G3"
+  gradeId      String
+  // The teacher's classes in that grade that follow it, e.g. ["3/2", "3/3"]
+  sections     String[]
+  description  String   @default("")
+  // The teacher's own plan document (optional, besides the plan written week by week)
+  planFileName String?
+  planFileSize Int?
+  planFileType String?
+  planFileKey  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  teacher   Teacher              @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  files     CurriculumFile[]
+  planWeeks CurriculumPlanWeek[]
+
+  // One curriculum per subject & grade for the same teacher
+  @@unique([teacherId, subject, gradeId])
+  @@index([teacherId, updatedAt])
+  @@index([updatedAt])
+  // A student's class: WHERE sections @> ARRAY['3/2']
+  @@index([sections], type: Gin)
+  @@map("curricula")
+}
+
+model CurriculumFile {
+  id           String             @id @default(cuid())
+  curriculumId String
+  kind         CurriculumFileKind
+  title        String
+  // false = the teacher's own reference (e.g. the teacher's guide), hidden from students
+  forStudents  Boolean            @default(true)
+  // A link (the ministry's site, Drive...) or an uploaded file - one of the two
+  link         String?
+  fileName     String?
+  fileSize     Int?
+  fileType     String?
+  // Where the file is kept, relative to the uploads folder
+  fileKey      String?
+  uploadedAt   DateTime           @default(now())
+
+  curriculum Curriculum @relation(fields: [curriculumId], references: [id], onDelete: Cascade)
+
+  @@index([curriculumId, uploadedAt])
+  @@index([curriculumId, kind, uploadedAt])
+  @@map("curriculum_files")
+}
+
+model CurriculumPlanWeek {
+  id           String   @id @default(cuid())
+  curriculumId String
+  // Week of the term, 1, 2, 3...
+  week         Int
+  topic        String
+  objectives   String[] @default([])
+
+  curriculum Curriculum @relation(fields: [curriculumId], references: [id], onDelete: Cascade)
+
+  @@unique([curriculumId, week])
+  @@map("curriculum_plan_weeks")
 }

@@ -23,6 +23,7 @@ import gradesRoutes from './modules/grades/grades.routes.js';
 import announcementsRoutes from './modules/announcements/announcements.routes.js';
 import adminRoutes from './modules/admin/admin.routes.js';
 import teacherAttendanceRoutes from './modules/teacher-attendance/teacher-attendance.routes.js';
+import curriculaRoutes from './modules/curricula/curricula.routes.js';
 
 const app = express();
 
@@ -77,6 +78,7 @@ app.get('/', (req, res) => {
         'grades',
         'announcements',
         'teacher-attendance',
+        'curricula',
       ],
       timestamp: new Date().toISOString(),
     },
@@ -108,6 +110,7 @@ app.use(`${API_PREFIX}/attendance`, attendanceRoutes);
 app.use(`${API_PREFIX}/grades`, gradesRoutes);
 app.use(`${API_PREFIX}/announcements`, announcementsRoutes);
 app.use(`${API_PREFIX}/teacher-attendance`, teacherAttendanceRoutes);
+app.use(`${API_PREFIX}/curricula`, curriculaRoutes);
 app.use(`${API_PREFIX}/admin/admins`, adminRoutes);
 app.use(`${API_PREFIX}/admin`, adminRoutes);
 

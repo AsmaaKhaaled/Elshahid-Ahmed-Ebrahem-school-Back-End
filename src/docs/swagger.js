@@ -672,7 +672,168 @@ const paths = {
     createSchema: 'CreateMaterial',
     updateSchema: 'UpdateMaterial',
     access: { list: ALL, get: ALL, create: ADMIN_TEACHER, update: ADMIN_TEACHER, remove: ADMIN_TEACHER },
+    listQuery: [
+      queryParam('page', 'Page number (default 1)', { type: 'integer', minimum: 1 }),
+      queryParam('limit', 'Page size (default 20, max 100)', { type: 'integer', minimum: 1, maximum: 100 }),
+      queryParam('subjectId', 'Subject ID'),
+      queryParam('classId', 'Class ID (also returns materials for every class)'),
+      queryParam('search', 'Title or description'),
+    ],
   }),
+
+  // Curricula (المناهج والمواد الدراسية)
+  '/api/v1/curricula': {
+    get: {
+      tags: ['Curricula'],
+      summary: 'Curricula I may see (paginated, most recently updated first)',
+      description: `${roles('TEACHER', 'ADMIN', 'SUPER_ADMIN', 'STUDENT')}\n\nA teacher gets their own (plus \`startedSubjects\`), the administration every teacher's, a student their class's (student files only).`,
+      parameters: [
+        queryParam('page', 'Page number (default 1)', { type: 'integer', minimum: 1 }),
+        queryParam('limit', 'Page size (default 15, max 100)', { type: 'integer', minimum: 1, maximum: 100 }),
+        queryParam('search', 'Subject, description or teacher name'),
+        queryParam('gradeId', 'G1 | G2 | G3'),
+        queryParam('subject', 'Subject (Arabic name)'),
+        queryParam('teacherId', 'Teacher ID (administration only)'),
+      ],
+      responses: responses(200, 401, 403, 422),
+    },
+    post: {
+      tags: ['Curricula'],
+      summary: 'Start the curriculum of one of my subjects for one grade',
+      description: `${roles('TEACHER')}\n\nThe subject must be one the teacher teaches and the classes their own. One per subject & grade (409).`,
+      requestBody: jsonBody({
+        type: 'object',
+        required: ['subject', 'gradeId', 'sections'],
+        properties: {
+          subject: { type: 'string', example: 'الرياضيات' },
+          gradeId: { type: 'string', enum: ['G1', 'G2', 'G3'] },
+          sections: { type: 'array', items: { type: 'string' }, example: ['3/2', '3/3'] },
+          description: { type: 'string' },
+        },
+      }),
+      responses: responses(201, 400, 401, 403, 409, 422),
+    },
+  },
+  '/api/v1/curricula/{id}': {
+    get: {
+      tags: ['Curricula'],
+      summary: 'One curriculum: its plan and how many files of each kind (files are paged apart)',
+      parameters: [idParam()],
+      responses: responses(200, 401, 403, 404),
+    },
+    put: {
+      tags: ['Curricula'],
+      summary: 'Edit my curriculum',
+      description: roles('TEACHER'),
+      parameters: [idParam()],
+      responses: responses(200, 400, 401, 403, 404, 409, 422),
+    },
+    delete: {
+      tags: ['Curricula'],
+      summary: 'Delete my curriculum, its files and plan',
+      description: roles('TEACHER'),
+      parameters: [idParam()],
+      responses: responses(200, 401, 403, 404),
+    },
+  },
+  '/api/v1/curricula/{id}/files': {
+    get: {
+      tags: ['Curricula'],
+      summary: "A curriculum's files & links (paginated, newest first)",
+      parameters: [
+        idParam(),
+        queryParam('page', 'Page number (default 1)', { type: 'integer', minimum: 1 }),
+        queryParam('limit', 'Page size (default 15, max 100)', { type: 'integer', minimum: 1, maximum: 100 }),
+        queryParam('kind', 'BOOK | PLAN | EXAMS | GUIDE | OTHER'),
+      ],
+      responses: responses(200, 401, 403, 404, 422),
+    },
+    post: {
+      tags: ['Curricula'],
+      summary: 'Upload a file (max 20MB) or add a link',
+      description: `${roles('TEACHER')}\n\nmultipart/form-data: \`kind\`, \`title\`, \`forStudents\` ("false" = teacher only), and \`file\` or \`link\`.`,
+      parameters: [idParam()],
+      requestBody: {
+        required: true,
+        content: {
+          'multipart/form-data': {
+            schema: {
+              type: 'object',
+              required: ['kind', 'title'],
+              properties: {
+                kind: { type: 'string', enum: ['BOOK', 'PLAN', 'EXAMS', 'GUIDE', 'OTHER'] },
+                title: { type: 'string' },
+                forStudents: { type: 'boolean' },
+                link: { type: 'string', format: 'uri' },
+                file: { type: 'string', format: 'binary' },
+              },
+            },
+          },
+        },
+      },
+      responses: responses(201, 400, 401, 403, 404, 422),
+    },
+  },
+  '/api/v1/curricula/{id}/files/{fileId}': {
+    delete: {
+      tags: ['Curricula'],
+      summary: 'Delete a file or link of my curriculum',
+      description: roles('TEACHER'),
+      parameters: [idParam(), idParam('fileId', 'File ID')],
+      responses: responses(200, 401, 403, 404),
+    },
+  },
+  '/api/v1/curricula/{id}/files/{fileId}/download': {
+    get: {
+      tags: ['Curricula'],
+      summary: 'Download an uploaded file (students: student files of their class only)',
+      parameters: [idParam(), idParam('fileId', 'File ID')],
+      responses: responses(200, 401, 403, 404),
+    },
+  },
+  '/api/v1/curricula/{id}/plan': {
+    put: {
+      tags: ['Curricula'],
+      summary: 'Replace the plan & objectives (week 1, 2, 3... in order, max 60)',
+      description: roles('TEACHER'),
+      parameters: [idParam()],
+      requestBody: jsonBody({
+        type: 'object',
+        properties: {
+          weeks: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: { topic: { type: 'string' }, objectives: { type: 'array', items: { type: 'string' } } },
+            },
+          },
+        },
+      }),
+      responses: responses(200, 401, 403, 404, 422),
+    },
+  },
+  '/api/v1/curricula/{id}/plan-file': {
+    get: {
+      tags: ['Curricula'],
+      summary: "Download the teacher's plan document (teacher & administration)",
+      parameters: [idParam()],
+      responses: responses(200, 401, 403, 404),
+    },
+    put: {
+      tags: ['Curricula'],
+      summary: 'Upload (replace) my plan document — multipart `file`, max 20MB',
+      description: roles('TEACHER'),
+      parameters: [idParam()],
+      responses: responses(200, 400, 401, 403, 404, 422),
+    },
+    delete: {
+      tags: ['Curricula'],
+      summary: 'Remove my plan document',
+      description: roles('TEACHER'),
+      parameters: [idParam()],
+      responses: responses(200, 401, 403, 404),
+    },
+  },
 
   // Attendance
   ...crud({
@@ -853,6 +1014,7 @@ export const swaggerSpec = {
     'Subjects',
     'Timetable',
     'Materials',
+    'Curricula',
     'Attendance',
     'Exams',
     'Grades',

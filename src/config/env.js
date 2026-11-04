@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import path from 'path';
 
 dotenv.config();
 
@@ -31,6 +32,8 @@ export const env = {
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '1d',
   JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET || INSECURE_DEFAULT_REFRESH_SECRET,
   JWT_REFRESH_EXPIRES_IN: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
+  // Where uploaded files (curricula...) are kept on the server
+  UPLOAD_DIR: path.resolve(process.env.UPLOAD_DIR || 'uploads'),
 };
 
 export default env;

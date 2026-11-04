@@ -4,12 +4,12 @@ import { ApiResponse } from '../../shared/utils/api-response.js';
 export class MaterialsController {
   static async getAll(req, res, next) {
     try {
-      const materials = await MaterialsService.getMaterials(req.query);
+      const { items, meta } = await MaterialsService.getMaterials(req.query);
       return ApiResponse.success(res, {
         statusCode: 200,
         message: 'Materials retrieved successfully',
-        data: materials,
-        meta: { total: materials.length },
+        data: items,
+        meta,
       });
     } catch (error) {
       next(error);
