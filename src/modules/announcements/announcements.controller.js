@@ -2,26 +2,42 @@ import { AnnouncementsService } from './announcements.service.js';
 import { ApiResponse } from '../../shared/utils/api-response.js';
 
 export class AnnouncementsController {
+  /**
+   * GET /api/v1/announcements
+   */
   static async getAll(req, res, next) {
     try {
-      const announcements = await AnnouncementsService.getAnnouncements(req.query);
+      const announcements = await AnnouncementsService.getAnnouncements(req.query, req.user);
       return ApiResponse.success(res, {
-        statusCode: 200,
         message: 'Announcements retrieved successfully',
         data: announcements,
-        meta: { total: announcements.length },
       });
     } catch (error) {
       next(error);
     }
   }
 
+  /**
+   * GET /api/v1/announcements/unread-count
+   */
+  static async getUnreadCount(req, res, next) {
+    try {
+      const result = await AnnouncementsService.getUnreadCount(req.user);
+      return ApiResponse.success(res, {
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/v1/announcements/:id
+   */
   static async getById(req, res, next) {
     try {
-      const announcement = await AnnouncementsService.getAnnouncementById(req.params.id);
+      const announcement = await AnnouncementsService.getAnnouncementById(req.params.id, req.user);
       return ApiResponse.success(res, {
-        statusCode: 200,
-        message: 'Announcement retrieved successfully',
         data: announcement,
       });
     } catch (error) {
@@ -29,26 +45,60 @@ export class AnnouncementsController {
     }
   }
 
+  /**
+   * POST /api/v1/announcements
+   * Publish new announcement and broadcast via Socket.io
+   */
   static async create(req, res, next) {
     try {
-      const payload = {
-        ...req.body,
-        authorId: req.user.id,
-        authorRole: req.user.role,
-      };
-      const announcement = await AnnouncementsService.createAnnouncement(payload);
-      return ApiResponse.created(res, announcement, 'Announcement published successfully');
+      const created = await AnnouncementsService.createAnnouncement(req.body, req.user);
+      return ApiResponse.created(res, created, 'تم نشر التعميم والإعلان وإرسال التنبيهات بنجاح');
     } catch (error) {
       next(error);
     }
   }
 
-  static async update(req, res, next) {
+  /**
+   * POST /api/v1/announcements/:id/read
+   * Mark announcement as read
+   */
+  static async markAsRead(req, res, next) {
     try {
-      const updated = await AnnouncementsService.updateAnnouncement(req.params.id, req.body, req.user);
+      const result = await AnnouncementsService.markAsRead(req.params.id, req.user);
       return ApiResponse.success(res, {
-        statusCode: 200,
-        message: 'Announcement updated successfully',
+        message: 'تم تسجيل قراءة الإعلان بنجاح',
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/v1/announcements/read-all
+   * Mark all unread announcements as read
+   */
+  static async markAllAsRead(req, res, next) {
+    try {
+      const result = await AnnouncementsService.markAllAsRead(req.user);
+      return ApiResponse.success(res, {
+        message: 'تم تعيين جميع الإعلانات كمقروءة',
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * PATCH /api/v1/announcements/:id/pin
+   * Toggle pinned status
+   */
+  static async togglePinned(req, res, next) {
+    try {
+      const updated = await AnnouncementsService.togglePinned(req.params.id, req.user);
+      return ApiResponse.success(res, {
+        message: 'تم تحديث حالة التثبيت بنجاح',
         data: updated,
       });
     } catch (error) {
@@ -56,12 +106,29 @@ export class AnnouncementsController {
     }
   }
 
+  /**
+   * PUT /api/v1/announcements/:id
+   */
+  static async update(req, res, next) {
+    try {
+      const updated = await AnnouncementsService.updateAnnouncement(req.params.id, req.body, req.user);
+      return ApiResponse.success(res, {
+        message: 'تم تحديث الإعلان بنجاح',
+        data: updated,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * DELETE /api/v1/announcements/:id
+   */
   static async remove(req, res, next) {
     try {
       await AnnouncementsService.deleteAnnouncement(req.params.id, req.user);
       return ApiResponse.success(res, {
-        statusCode: 200,
-        message: 'Announcement deleted successfully',
+        message: 'تم حذف الإعلان بنجاح',
       });
     } catch (error) {
       next(error);

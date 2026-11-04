@@ -350,7 +350,7 @@ export class StudentsService {
     const norm = (s) =>
       String(s || '')
         .replace(/[\uFEFF\u200B-\u200F\u00A0]/g, '') // remove zero-width & non-breaking spaces
-        .replace(/[\u064B-\u065F\u0670]/g, '')       // remove Tashkeel
+        .replace(/[\u064B-\u065F\u0670\u0640]/g, '') // remove Tashkeel and Tatweel (ـ)
         .replace(/[أإآٱ]/g, 'ا')                       // normalize Alef
         .replace(/[ة]/g, 'ه')                          // normalize Taa marbouta
         .replace(/[ى]/g, 'ي')                          // normalize Alef maksoura
@@ -359,18 +359,6 @@ export class StudentsService {
         .trim();
 
     // Checkers for header types
-    const isNameHeader = (text) => {
-      const n = norm(text);
-      if (!n) return false;
-      return (
-        (n.includes('اسم') || n.includes('طالب') || n.includes('تلميذ') || n.includes('name')) &&
-        !n.includes('ولي') &&
-        !n.includes('guardian') &&
-        !n.includes('اب') &&
-        !n.includes('والد')
-      );
-    };
-
     const isNidHeader = (text) => {
       const n = norm(text);
       if (!n) return false;
@@ -383,24 +371,6 @@ export class StudentsService {
       );
     };
 
-    const isCodeHeader = (text) => {
-      const n = norm(text);
-      if (!n) return false;
-      return n.includes('كود') || n.includes('code') || n.includes('جلوس') || n.includes('مسلسل');
-    };
-
-    const isGradeHeader = (text) => {
-      const n = norm(text);
-      if (!n) return false;
-      return n.includes('صف') || n.includes('مرحل') || n.includes('grade') || n.includes('stage');
-    };
-
-    const isClassHeader = (text) => {
-      const n = norm(text);
-      if (!n) return false;
-      return n.includes('فصل') || n.includes('class') || n.includes('قاع') || n.includes('شعب');
-    };
-
     const isPhoneHeader = (text) => {
       const n = norm(text);
       if (!n) return false;
@@ -409,8 +379,44 @@ export class StudentsService {
         n.includes('تليفون') ||
         n.includes('موب') ||
         n.includes('phone') ||
-        n.includes('mobile') ||
-        (n.includes('رقم') && !n.includes('قومي') && !n.includes('جلوس') && !n.includes('كود'))
+        n.includes('mobile')
+      );
+    };
+
+    const isGradeHeader = (text) => {
+      const n = norm(text);
+      if (!n) return false;
+      return (
+        n.includes('صف') ||
+        n.includes('مرحل') ||
+        n.includes('grade') ||
+        n.includes('stage')
+      );
+    };
+
+    const isClassHeader = (text) => {
+      const n = norm(text);
+      if (!n) return false;
+      return (
+        n.includes('فصل') ||
+        n.includes('class') ||
+        n.includes('قاع') ||
+        n.includes('شعب')
+      );
+    };
+
+    const isCodeHeader = (text) => {
+      const n = norm(text);
+      if (!n) return false;
+      return (
+        (n.includes('كود') ||
+          n.includes('code') ||
+          n.includes('جلوس') ||
+          n.includes('مسلسل') ||
+          n === 'م' ||
+          n === 'رقم') &&
+        !isNidHeader(text) &&
+        !isPhoneHeader(text)
       );
     };
 
@@ -418,7 +424,11 @@ export class StudentsService {
       const n = norm(text);
       if (!n) return false;
       return (
-        (n.includes('ولي') || n.includes('والد') || n.includes('اب') || n.includes('guardian')) &&
+        (n.includes('ولي') ||
+          n.includes('والد') ||
+          n.includes('guardian') ||
+          n.includes('اسمالاب') ||
+          n.includes('اسماب')) &&
         !isPhoneHeader(text)
       );
     };
@@ -429,8 +439,39 @@ export class StudentsService {
       return n.includes('قيد') || n.includes('status') || n.includes('حال') || n.includes('انتظام');
     };
 
+    const isNameHeader = (text) => {
+      const n = norm(text);
+      if (!n) return false;
+      // Exclude codes, national IDs, phones, classes, grades, status, guardian
+      if (
+        isCodeHeader(text) ||
+        isNidHeader(text) ||
+        isPhoneHeader(text) ||
+        isClassHeader(text) ||
+        isGradeHeader(text) ||
+        isStatusHeader(text) ||
+        isGuardianHeader(text) ||
+        n.includes('اسمالام') ||
+        n.includes('اسمام')
+      ) {
+        return false;
+      }
+      return (
+        n.includes('اسم') ||
+        n.includes('name') ||
+        n === 'طالب' ||
+        n === 'الطالب' ||
+        n === 'الطلاب' ||
+        n === 'تلميذ' ||
+        n === 'التلميذ' ||
+        n === 'التلاميذ' ||
+        n.includes('اسماء') ||
+        n.includes('بيانات')
+      );
+    };
+
     // 1. Detect the actual header row (in case row 0 is a title banner like "مدرسة...")
-    let headerRowIndex = 0;
+    let headerRowIndex = -1;
 
     for (let r = 0; r < Math.min(10, rawMatrix.length); r++) {
       const row = rawMatrix[r];
@@ -457,24 +498,38 @@ export class StudentsService {
       }
     }
 
-    const headerRow = rawMatrix[headerRowIndex] || [];
-    const colMap = new Map(); // colIndex -> fieldName
+    // Fallback: check if row 0 has a recognized name header even if only 1 header matched
+    if (headerRowIndex === -1 && rawMatrix.length > 0 && Array.isArray(rawMatrix[0])) {
+      const hasName = rawMatrix[0].some((cell) => isNameHeader(String(cell || '').trim()));
+      if (hasName) {
+        headerRowIndex = 0;
+      }
+    }
 
-    headerRow.forEach((cell, idx) => {
-      const text = String(cell || '').trim();
-      if (!text) return;
-      if (isNameHeader(text) && !colMap.has('name')) colMap.set('name', idx);
-      else if (isNidHeader(text) && !colMap.has('nid')) colMap.set('nid', idx);
-      else if (isCodeHeader(text) && !colMap.has('code')) colMap.set('code', idx);
-      else if (isGradeHeader(text) && !colMap.has('grade')) colMap.set('grade', idx);
-      else if (isClassHeader(text) && !colMap.has('class')) colMap.set('class', idx);
-      else if (isPhoneHeader(text) && !colMap.has('phone')) colMap.set('phone', idx);
-      else if (isGuardianHeader(text) && !colMap.has('guardian')) colMap.set('guardian', idx);
-      else if (isStatusHeader(text) && !colMap.has('status')) colMap.set('status', idx);
-    });
+    const colMap = new Map(); // colIndex -> fieldName
+    let dataRows = [];
+
+    if (headerRowIndex >= 0) {
+      const headerRow = rawMatrix[headerRowIndex] || [];
+      headerRow.forEach((cell, idx) => {
+        const text = String(cell || '').trim();
+        if (!text) return;
+        if (isNameHeader(text) && !colMap.has('name')) colMap.set('name', idx);
+        else if (isNidHeader(text) && !colMap.has('nid')) colMap.set('nid', idx);
+        else if (isCodeHeader(text) && !colMap.has('code')) colMap.set('code', idx);
+        else if (isGradeHeader(text) && !colMap.has('grade')) colMap.set('grade', idx);
+        else if (isClassHeader(text) && !colMap.has('class')) colMap.set('class', idx);
+        else if (isPhoneHeader(text) && !colMap.has('phone')) colMap.set('phone', idx);
+        else if (isGuardianHeader(text) && !colMap.has('guardian')) colMap.set('guardian', idx);
+        else if (isStatusHeader(text) && !colMap.has('status')) colMap.set('status', idx);
+      });
+      dataRows = rawMatrix.slice(headerRowIndex + 1);
+    } else {
+      // No header row at all: all rows are data!
+      dataRows = rawMatrix;
+    }
 
     // 2. Process data rows
-    const dataRows = rawMatrix.slice(headerRowIndex + 1);
     const parsedStudents = [];
 
     for (let rowIndex = 0; rowIndex < dataRows.length; rowIndex++) {
@@ -494,25 +549,18 @@ export class StudentsService {
       };
 
       let fullNameArabic = getVal('name');
-      let nationalId = getVal('nid').replace(/[\s-]/g, '');
+      let nationalId = getVal('nid').replace(/\s-/g, '');
       let studentCode = getVal('code');
       let gradeLevel = getVal('grade');
       let classId = getVal('class');
       let guardianName = getVal('guardian');
-      let guardianPhone = getVal('phone').replace(/[\s-]/g, '');
+      let guardianPhone = getVal('phone').replace(/\s-/g, '');
       let enrollmentStatus = getVal('status') || 'منتظم';
 
-      // Smart fallback: If column mappings were not found by name, scan row cells
-      if (!fullNameArabic) {
-        const firstCell = String(row[0] || '').trim();
-        if (firstCell && firstCell.length >= 3 && !/^\d+$/.test(firstCell)) {
-          fullNameArabic = firstCell;
-        }
-      }
-
-      if (!nationalId) {
-        for (const cell of row) {
-          const cleaned = String(cell || '').trim().replace(/[\s-]/g, '');
+      // Smart fallback 1: Scan for 14-digit National ID
+      if (!nationalId || !/^[23]\d{13}$/.test(nationalId)) {
+        for (let c = 0; c < row.length; c++) {
+          const cleaned = String(row[c] || '').trim().replace(/\s-/g, '');
           if (/^[23]\d{13}$/.test(cleaned)) {
             nationalId = cleaned;
             break;
@@ -520,9 +568,10 @@ export class StudentsService {
         }
       }
 
-      if (!guardianPhone) {
-        for (const cell of row) {
-          let cleaned = String(cell || '').trim().replace(/[\s-]/g, '');
+      // Smart fallback 2: Scan for Egyptian phone number
+      if (!guardianPhone || !/^01[0125]\d{8}$/.test(guardianPhone)) {
+        for (let c = 0; c < row.length; c++) {
+          let cleaned = String(row[c] || '').trim().replace(/\s-/g, '');
           if (cleaned.length === 10 && cleaned.startsWith('1')) cleaned = '0' + cleaned;
           if (/^01[0125]\d{8}$/.test(cleaned)) {
             guardianPhone = cleaned;
@@ -530,10 +579,38 @@ export class StudentsService {
           }
         }
       }
-
-      // Fix phone starting without 0 if length is 10
       if (guardianPhone.length === 10 && guardianPhone.startsWith('1')) {
         guardianPhone = '0' + guardianPhone;
+      }
+
+      // Smart fallback 3: Scan for Class pattern (e.g. 1/1, 2/3)
+      if (!classId) {
+        for (let c = 0; c < row.length; c++) {
+          const cellText = String(row[c] || '').trim();
+          if (/^[123]\s*\/\s*\d+$/.test(cellText)) {
+            classId = cellText;
+            break;
+          }
+        }
+      }
+
+      // Smart fallback 4: Robust scan for Student Full Name in all cells
+      if (!fullNameArabic || /^\d+$/.test(fullNameArabic)) {
+        for (let c = 0; c < row.length; c++) {
+          const cellText = String(row[c] || '').trim();
+          if (!cellText || cellText.length < 3) continue;
+          if (/^\d+$/.test(cellText)) continue;
+          if (cellText === nationalId || cellText === guardianPhone || cellText === classId) continue;
+          if (/^[123]\s*\/\s*\d+$/.test(cellText)) continue;
+          if (/^صف|الصف|اعدادي|إعدادي/i.test(cellText)) continue;
+          if (/^منتظم|موقوف|منقول$/i.test(cellText)) continue;
+          // Check if Arabic name with at least 2 words
+          const arabicWords = cellText.split(/\s+/).filter((w) => /^[\u0621-\u064A\u0671-\u06D3]+$/.test(w));
+          if (arabicWords.length >= 2) {
+            fullNameArabic = cellText;
+            break;
+          }
+        }
       }
 
       // If guardianName not provided, deduce father's name from student's name if >= 3 words
@@ -554,7 +631,6 @@ export class StudentsService {
           else if (stageDigit === '3') gradeLevel = 'الصف الثالث الإعدادي';
         }
       }
-
       parsedStudents.push({
         fullNameArabic,
         nationalId,
