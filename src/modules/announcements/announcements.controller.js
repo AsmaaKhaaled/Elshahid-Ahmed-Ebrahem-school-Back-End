@@ -18,6 +18,22 @@ export class AnnouncementsController {
   }
 
   /**
+   * GET /api/v1/announcements/public
+   * No sign-in: the announcements addressed to visitors
+   */
+  static async getPublic(req, res, next) {
+    try {
+      const announcements = await AnnouncementsService.getPublicAnnouncements();
+      return ApiResponse.success(res, {
+        message: 'Public announcements retrieved successfully',
+        data: announcements,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * GET /api/v1/announcements/unread-count
    */
   static async getUnreadCount(req, res, next) {

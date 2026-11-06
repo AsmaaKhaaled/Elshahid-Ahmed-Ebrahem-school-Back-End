@@ -104,6 +104,40 @@ export class AnnouncementModel {
   }
 
   /**
+   * Announcements anyone may read without signing in: school-wide (not a class note),
+   * addressed to visitors (الزوار), active and not expired. Only the fields a public page shows.
+   */
+  static async findPublic() {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const announcements = await prisma.announcement.findMany({
+      where: {
+        isActive: true,
+        type: 'SCHOOL_WIDE',
+        classId: null,
+        OR: [{ audiences: { has: 'PARENT' } }, { audiences: { isEmpty: true } }],
+        AND: [{ OR: [{ expiresAt: null }, { expiresAt: { gte: todayStr } }] }],
+      },
+      orderBy: [{ pinned: 'desc' }, { createdAt: 'desc' }],
+      take: 50,
+    });
+
+    return announcements.map((item) => ({
+      id: item.id,
+      title: item.title,
+      content: item.content,
+      category: item.category || 'إداري',
+      audiences: item.audiences?.length ? item.audiences : ['TEACHER', 'STUDENT', 'PARENT'],
+      author: item.authorName || 'إدارة المدرسة',
+      publishedAt: item.createdAt.toISOString(),
+      expiresAt: item.expiresAt || undefined,
+      pinned: item.pinned || false,
+      attachment: item.attachmentUrl
+        ? { name: item.attachmentName || 'ملف مرفق', url: item.attachmentUrl }
+        : undefined,
+    }));
+  }
+
+  /**
    * Find announcement by ID with read status
    */
   static async findById(id, userId = null) {

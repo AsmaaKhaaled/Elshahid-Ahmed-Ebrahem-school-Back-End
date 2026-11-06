@@ -11,8 +11,8 @@ export class CurriculaController {
   static async list(req, res, next) {
     try {
       const viewer = await CurriculaService.viewerOf(req.user);
-      const { curricula, meta, startedSubjects } = await CurriculaService.list(viewer, req.query);
-      return res.status(200).json({ status: 'success', data: { curricula, ...(startedSubjects && { startedSubjects }) }, meta });
+      const { curricula, gradeCounts, meta, startedSubjects } = await CurriculaService.list(viewer, req.query);
+      return res.status(200).json({ status: 'success', data: { curricula, gradeCounts, ...(startedSubjects && { startedSubjects }) }, meta });
     } catch (error) {
       next(error);
     }

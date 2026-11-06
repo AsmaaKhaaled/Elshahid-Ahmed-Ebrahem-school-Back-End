@@ -1,12 +1,19 @@
 import { PrismaClient } from '@prisma/client';
 import { env } from './env.js';
 
+// Neon suspends an idle database; waking it can take longer than Prisma's default 10s wait for a connection
+const POOL_TIMEOUT_SECONDS = 30;
+
+const withPoolTimeout = (url) =>
+  !url || /[?&]pool_timeout=/.test(url) ? url : `${url}${url.includes('?') ? '&' : '?'}pool_timeout=${POOL_TIMEOUT_SECONDS}`;
+
 export const prisma = new PrismaClient({
+  datasourceUrl: withPoolTimeout(env.DATABASE_URL_POOLED),
   log: env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
 });
 
-// Enough for a page's first burst of requests; Prisma's pool holds up to (CPU cores × 2 + 1)
-const WARM_CONNECTIONS = 6;
+// Enough for a page's first burst of requests; Prisma's default pool holds (physical CPU cores × 2 + 1)
+const WARM_CONNECTIONS = 5;
 
 class Database {
   constructor() {

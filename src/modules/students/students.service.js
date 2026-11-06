@@ -48,7 +48,8 @@ export class StudentsService {
     }
 
     const byName = await prisma.class.findUnique({ where: { name } });
-    if (!byName) {
+    // A class removed from this year's classes no longer takes students
+    if (!byName || !byName.isActive) {
       throw AppError.badRequest(`الفصل "${name}" غير موجود بالمدرسة`);
     }
     return byName;
@@ -166,10 +167,10 @@ export class StudentsService {
     assertValidStatus(enrollmentStatus);
     const isActive = data.isActive !== undefined ? data.isActive : !INACTIVE_STATUSES.includes(enrollmentStatus);
 
-    // 6. Provision the User login account for the student
-    const defaultPassword = 'Student@2026';
+    // 6. Provision the User login account for the student.
+    // First sign-in: national ID + student code, then the student chooses their own password.
     const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(defaultPassword, salt);
+    const hashedPassword = await bcrypt.hash(studentCode, salt);
 
     const newUser = await prisma.user.create({
       data: {
@@ -206,9 +207,10 @@ export class StudentsService {
     return {
       ...student,
       initialCredentials: {
-        identifier: studentCode,
+        identifier: nationalId,
         nationalId,
-        initialPassword: defaultPassword,
+        studentCode,
+        initialPassword: studentCode,
         requirePasswordChange: true,
       },
     };

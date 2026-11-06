@@ -7,7 +7,7 @@ import { parsePagination, buildPaginationMeta } from '../../shared/utils/paginat
 const SALT_ROUNDS = 10;
 
 // The school's classes: grade number -> sections (matches the frontend's GRADE_LEVELS)
-const GRADES = [
+export const GRADES = [
   { number: 1, level: '1st Preparatory', label: 'الصف الأول الإعدادي' },
   { number: 2, level: '2nd Preparatory', label: 'الصف الثاني الإعدادي' },
   { number: 3, level: '3rd Preparatory', label: 'الصف الثالث الإعدادي' },
@@ -27,6 +27,16 @@ const TEACHER_INCLUDE = {
   user: { select: { id: true, status: true, forcePasswordChange: true } },
 };
 
+/**
+ * Which classes each subject is taught to. Teachers saved before per-subject classes existed
+ * teach every subject to all of their classes.
+ */
+export const assignmentsOf = (teacher, classNames) => {
+  const saved = Array.isArray(teacher.teachingAssignments) ? teacher.teachingAssignments : [];
+  if (saved.length) return saved;
+  return teacher.teachingSubjects.map((subject) => ({ subject, classes: [...classNames].sort() }));
+};
+
 const toDto = (teacher) => ({
   id: teacher.id,
   teacherCode: teacher.teacherCode,
@@ -38,6 +48,7 @@ const toDto = (teacher) => ({
   specialization: teacher.specialization,
   subjects: teacher.teachingSubjects,
   classes: teacher.classes.map((cls) => cls.name).sort(),
+  assignments: assignmentsOf(teacher, teacher.classes.map((cls) => cls.name)),
   status: teacher.employmentStatus,
   // Sign-in account for the teachers portal
   account: teacher.user
@@ -52,6 +63,7 @@ const toPublicDto = (teacher) => ({
   specialization: teacher.specialization,
   subjects: teacher.teachingSubjects,
   classes: teacher.classes.map((cls) => cls.name).sort(),
+  assignments: assignmentsOf(teacher, teacher.classes.map((cls) => cls.name)),
   status: teacher.employmentStatus,
 });
 
@@ -128,7 +140,7 @@ export class TeachersService {
   static async createTeacher(body) {
     const data = this.teacherData(body);
     await this.assertUnique({ nationalId: data.nationalId, email: data.email });
-    const classIds = await this.resolveClasses(body.classes);
+    const classIds = await this.resolveClasses(this.assignedClassNames(data));
     const passwordHash = await bcrypt.hash(body.password, SALT_ROUNDS);
     const teacherCode = await this.nextTeacherCode();
 
@@ -160,7 +172,7 @@ export class TeachersService {
     }
     const data = this.teacherData(body);
     await this.assertUnique({ nationalId: data.nationalId, email: data.email, teacherId: id, userId: existing.userId });
-    const classIds = await this.resolveClasses(body.classes);
+    const classIds = await this.resolveClasses(this.assignedClassNames(data));
     const passwordHash = body.password ? await bcrypt.hash(body.password, SALT_ROUNDS) : null;
 
     const teacher = await prisma.$transaction(async (tx) => {
@@ -200,11 +212,11 @@ export class TeachersService {
     ]);
   }
 
-  /** Every class a teacher can be assigned to (the standard 12, plus any extra ones in the database). */
+  /** Every class a teacher can be assigned to: this year's classes (the standard 12 until classes are set up). */
   static async getClassOptions() {
-    const extra = await prisma.class.findMany({ where: { isActive: true }, select: { name: true } });
-    const names = new Set([...STANDARD_CLASSES.map((cls) => cls.name), ...extra.map((cls) => cls.name)]);
-    return [...names].sort();
+    const active = await prisma.class.findMany({ where: { isActive: true }, select: { name: true } });
+    const names = active.length ? active.map((cls) => cls.name) : STANDARD_CLASSES.map((cls) => cls.name);
+    return names.sort();
   }
 
   /** The classes the admin assigned to this teacher, with how many students each has. */
@@ -252,6 +264,7 @@ export class TeachersService {
   // ---- helpers ----
 
   static teacherData(body) {
+    const assignments = this.assignmentsFrom(body);
     return {
       fullNameArabic: body.fullName.trim().replace(/\s+/g, ' '),
       nationalId: body.nationalId.trim(),
@@ -259,9 +272,29 @@ export class TeachersService {
       email: clean(body.email)?.toLowerCase() ?? null,
       jobTitle: clean(body.jobTitle),
       specialization: body.specialization.trim(),
-      teachingSubjects: [...new Set(body.subjects.map((subject) => subject.trim()))],
+      teachingSubjects: assignments.map((a) => a.subject),
+      teachingAssignments: assignments,
       employmentStatus: body.status,
     };
+  }
+
+  /** [{ subject, classes[] }] from the body; without `assignments`, every subject goes to all `classes`. */
+  static assignmentsFrom(body) {
+    const given = Array.isArray(body.assignments)
+      ? body.assignments
+      : body.subjects.map((subject) => ({ subject, classes: body.classes }));
+    const bySubject = new Map();
+    for (const { subject, classes } of given) {
+      const name = subject.trim();
+      const merged = new Set([...(bySubject.get(name) ?? []), ...classes.map((cls) => cls.trim())]);
+      bySubject.set(name, merged);
+    }
+    return [...bySubject].map(([subject, classes]) => ({ subject, classes: [...classes].sort() }));
+  }
+
+  /** Every class the teacher teaches any subject to. */
+  static assignedClassNames(data) {
+    return [...new Set(data.teachingAssignments.flatMap((a) => a.classes))];
   }
 
   static async assertUnique({ nationalId, email, teacherId = null, userId = null }) {
@@ -278,16 +311,21 @@ export class TeachersService {
     }
   }
 
-  /** Class names -> ids. A standard class missing from the database is created on the way. */
+  /**
+   * Class names -> ids; only this year's (active) classes. While the database has no classes at all,
+   * a standard class is created on the way.
+   */
   static async resolveClasses(names) {
     const wanted = [...new Set(names.map((name) => name.trim()))];
     if (!wanted.length) return [];
 
-    const found = await prisma.class.findMany({ where: { name: { in: wanted } }, select: { id: true, name: true } });
+    const found = await prisma.class.findMany({ where: { name: { in: wanted }, isActive: true }, select: { id: true, name: true } });
     const foundNames = new Set(found.map((cls) => cls.name));
     const missing = wanted.filter((name) => !foundNames.has(name));
+    if (!missing.length) return found.map((cls) => ({ id: cls.id }));
 
-    const unknown = missing.filter((name) => !STANDARD_CLASSES.some((cls) => cls.name === name));
+    const classesSetUp = (await prisma.class.count()) > 0;
+    const unknown = missing.filter((name) => classesSetUp || !STANDARD_CLASSES.some((cls) => cls.name === name));
     if (unknown.length) {
       throw AppError.badRequest(`فصول غير موجودة: ${unknown.join('، ')}`);
     }

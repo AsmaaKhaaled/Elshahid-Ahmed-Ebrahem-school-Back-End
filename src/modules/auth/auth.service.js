@@ -68,11 +68,27 @@ export class AuthService {
     };
   }
 
+  // ---- Student first sign-in: national ID + the school's student code (until they choose a password) ----
+
+  static isFirstStudentLogin(user) {
+    return user.role === 'STUDENT' && user.forcePasswordChange === true;
+  }
+
+  static studentNationalId(user) {
+    return user.nationalId || user.studentProfile?.nationalId || null;
+  }
+
+  /** Codes are compared ignoring case and spaces around them (e.g. "stu-2026-001" = "STU-2026-001"). */
+  static matchesStudentCode(value, user) {
+    const code = (user.studentCode || user.studentProfile?.studentCode || '').trim();
+    return Boolean(code) && typeof value === 'string' && value.trim().toUpperCase() === code.toUpperCase();
+  }
+
   /**
    * Unified Login Endpoint Logic
    * Accepts { identifier, password }
    * - Queries prisma.user where email, nationalId, or studentCode matches
-   * - Verifies bcrypt password
+   * - Verifies bcrypt password (a student's first sign-in: national ID + student code instead)
    * - Verifies status === 'ACTIVE'
    * - Checks forcePasswordChange:
    *     If true: returns tempToken (15m) and restricted payload
@@ -156,8 +172,11 @@ export class AuthService {
     }
 
     // 4. Password verification - before the status check, so a suspended account
-    // is only revealed to someone who knows its password
-    const isPasswordValid = await bcrypt.compare(password, user.password);
+    // is only revealed to someone who knows its password.
+    // A student who hasn't chosen a password yet signs in with their national ID + school code.
+    const isPasswordValid = this.isFirstStudentLogin(user)
+      ? trimmedIdentifier === this.studentNationalId(user) && this.matchesStudentCode(password, user)
+      : await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
       throw AppError.unauthorized('بيانات الدخول غير صحيحة');
     }
@@ -225,6 +244,11 @@ export class AuthService {
 
     if (!user.forcePasswordChange) {
       throw AppError.badRequest('تم تفعيل الحساب وتعيين كلمة المرور مسبقاً');
+    }
+
+    // The code is printed on the student's card, so it can't become their password
+    if (user.role === 'STUDENT' && this.matchesStudentCode(newPassword, user)) {
+      throw AppError.badRequest('لا يمكن استخدام كود الطالب ككلمة مرور، يرجى اختيار كلمة مرور خاصة بك');
     }
 
     const salt = await bcrypt.genSalt(10);

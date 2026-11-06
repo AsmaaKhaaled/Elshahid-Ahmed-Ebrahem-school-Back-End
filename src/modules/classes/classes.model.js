@@ -1,8 +1,9 @@
 import { prisma } from '../../config/database.js';
 
 export class ClassModel {
-  static async findAll({ gradeLevel, search } = {}) {
-    const where = {};
+  static async findAll({ gradeLevel, search, includeInactive } = {}) {
+    // Classes removed from this year's setup only show when asked for (?includeInactive=true)
+    const where = includeInactive === 'true' ? {} : { isActive: true };
 
     if (gradeLevel) {
       where.gradeLevel = { contains: gradeLevel, mode: 'insensitive' };

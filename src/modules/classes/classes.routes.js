@@ -9,6 +9,9 @@ const router = Router();
 
 router.use(authenticate);
 
+// Classes per grade & their capacity (before /:id so "structure" isn't taken for an id)
+router.get('/structure', ClassesController.getStructure);
+router.put('/structure', authorize('ADMIN'), validate(classesValidation.saveStructure), ClassesController.saveStructure);
 router.get('/', ClassesController.getAll);
 router.get('/:id', ClassesController.getById);
 router.post('/', authorize('ADMIN'), validate(classesValidation.createClass), ClassesController.create);

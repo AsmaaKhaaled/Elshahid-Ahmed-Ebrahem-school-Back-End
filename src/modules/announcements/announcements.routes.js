@@ -7,7 +7,10 @@ import { authorize } from '../../middlewares/role.middleware.js';
 
 const router = Router();
 
-// All announcement routes require authentication
+// Public: what visitors of the home & announcements pages may read, no sign-in needed
+router.get('/public', AnnouncementsController.getPublic);
+
+// All other announcement routes require authentication
 router.use(authenticate);
 
 // 1. Notification & Read Tracking Routes (Mounted before :id)

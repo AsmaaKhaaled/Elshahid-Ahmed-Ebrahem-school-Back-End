@@ -127,6 +127,8 @@ model Teacher {
   jobTitle         String? // المسمى الوظيفي (مثال: معلم أول رياضيات)
   // Subjects the teacher teaches, by their Arabic name (e.g. "اللغة العربية")
   teachingSubjects String[]                @default([])
+  // Which classes each subject is taught to: [{ "subject": "اللغة العربية", "classes": ["1/1", "2/3"] }]
+  teachingAssignments Json                 @default("[]")
   employmentStatus TeacherEmploymentStatus @default(ON_DUTY)
   email            String?
   phone            String?

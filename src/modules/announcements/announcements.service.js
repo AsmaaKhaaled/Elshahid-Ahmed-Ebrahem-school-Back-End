@@ -20,6 +20,13 @@ export class AnnouncementsService {
   }
 
   /**
+   * Announcements for visitors of the public pages (no sign-in needed)
+   */
+  static async getPublicAnnouncements() {
+    return AnnouncementModel.findPublic();
+  }
+
+  /**
    * Get single announcement by ID
    */
   static async getAnnouncementById(id, user) {

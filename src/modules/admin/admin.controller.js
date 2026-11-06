@@ -11,7 +11,7 @@ export class AdminController {
       return ApiResponse.success(res, {
         statusCode: 200,
         message: 'تم جلب قائمة المسؤولين بنجاح',
-        data: admins,
+        data: { admins },
         meta: { total: admins.length },
       });
     } catch (error) {
@@ -28,7 +28,7 @@ export class AdminController {
       return ApiResponse.success(res, {
         statusCode: 200,
         message: 'تم استرجاع بيانات المسؤول بنجاح',
-        data: admin,
+        data: { admin },
       });
     } catch (error) {
       next(error);
@@ -41,7 +41,7 @@ export class AdminController {
   static async createAdmin(req, res, next) {
     try {
       const newAdmin = await AdminService.createAdmin(req.body);
-      return ApiResponse.created(res, newAdmin, 'تم إنشاء حساب المسؤول بنجاح');
+      return ApiResponse.created(res, { admin: newAdmin }, 'تم إنشاء حساب المسؤول بنجاح');
     } catch (error) {
       next(error);
     }
@@ -56,7 +56,7 @@ export class AdminController {
       return ApiResponse.success(res, {
         statusCode: 200,
         message: 'تم تحديث بيانات المسؤول بنجاح',
-        data: updatedAdmin,
+        data: { admin: updatedAdmin },
       });
     } catch (error) {
       next(error);
@@ -72,7 +72,7 @@ export class AdminController {
       return ApiResponse.success(res, {
         statusCode: 200,
         message: 'تم تحديث صلاحيات المسؤول بنجاح',
-        data: updatedAdmin,
+        data: { admin: updatedAdmin },
       });
     } catch (error) {
       next(error);
@@ -88,7 +88,7 @@ export class AdminController {
       return ApiResponse.success(res, {
         statusCode: 200,
         message: 'تم تحديث حالة حساب المسؤول بنجاح',
-        data: updatedAdmin,
+        data: { admin: updatedAdmin },
       });
     } catch (error) {
       next(error);

@@ -3,6 +3,7 @@ import { prisma } from '../../config/database.js';
 import { AppError } from '../../shared/errors/app-error.js';
 import { removeStoredFiles, storageKey } from '../../shared/utils/file-storage.js';
 import { buildPaginationMeta, parsePagination } from '../../shared/utils/pagination.js';
+import { assignmentsOf } from '../teachers/teachers.service.js';
 import { CURRICULUM_FILE_KINDS } from './curricula.validation.js';
 
 const DEFAULT_PAGE_SIZE = 15;
@@ -126,9 +127,9 @@ export class CurriculaService {
   static async list(viewer, query) {
     const { page, limit, skip, take } = parsePagination(query, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
     const search = typeof query.search === 'string' ? query.search.trim() : '';
-    const where = {
+    // Everything but the grade, so each grade's count matches the other filters
+    const anyGrade = {
       ...visibleWhere(viewer),
-      ...(query.gradeId && { gradeId: query.gradeId }),
       ...(query.subject && { subject: query.subject }),
       // Filtering by teacher is for the administration
       ...(query.teacherId && !viewer.teacherId && viewer.section === undefined && { teacherId: query.teacherId }),
@@ -140,8 +141,9 @@ export class CurriculaService {
         ],
       }),
     };
+    const where = { ...anyGrade, ...(query.gradeId && { gradeId: query.gradeId }) };
 
-    const [total, rows, started] = await Promise.all([
+    const [total, rows, started, byGrade] = await Promise.all([
       prisma.curriculum.count({ where }),
       prisma.curriculum.findMany({
         where,
@@ -154,11 +156,14 @@ export class CurriculaService {
       viewer.teacherId
         ? prisma.curriculum.findMany({ where: { teacherId: viewer.teacherId }, select: { subject: true }, distinct: ['subject'] })
         : null,
+      // How many curricula each grade has, for the grade tabs: { G1: 12, G2: 9, ... }
+      prisma.curriculum.groupBy({ by: ['gradeId'], where: anyGrade, _count: { _all: true } }),
     ]);
 
     const curricula = (await summarize(rows, viewer)).map(({ fileCounts, ...card }) => card);
     return {
       curricula,
+      gradeCounts: Object.fromEntries(byGrade.map((row) => [row.gradeId, row._count._all])),
       meta: buildPaginationMeta({ total, page, limit }),
       ...(started && { startedSubjects: started.map((row) => row.subject) }),
     };
@@ -345,7 +350,10 @@ export class CurriculaService {
   /** The subject must be one the teacher teaches, the classes their own (as the admin assigned them). */
   static async checkedData(teacherId, body) {
     const [teacher, classes] = await Promise.all([
-      prisma.teacher.findUnique({ where: { id: teacherId }, select: { teachingSubjects: true, specialization: true } }),
+      prisma.teacher.findUnique({
+        where: { id: teacherId },
+        select: { teachingSubjects: true, teachingAssignments: true, specialization: true },
+      }),
       prisma.class.findMany({
         where: { isActive: true, OR: [{ assignedTeachers: { some: { id: teacherId } } }, { classTeacherId: teacherId }] },
         select: { name: true },
@@ -358,7 +366,9 @@ export class CurriculaService {
     if (!subjects.includes(subject)) {
       throw AppError.badRequest('المادة دي مش من المواد اللي بتدرّسها');
     }
-    const myClasses = new Set(classes.map((cls) => cls.name));
+    // Only the classes the admin assigned for this subject (all the teacher's classes for older records)
+    const subjectClasses = assignmentsOf(teacher, classes.map((cls) => cls.name)).find((a) => a.subject === subject)?.classes;
+    const myClasses = new Set(subjectClasses?.length ? subjectClasses : classes.map((cls) => cls.name));
     if (!myClasses.size) {
       throw AppError.badRequest('لسه مفيش فصول متسجلة ليك، اطلب من الإدارة تعيين فصولك');
     }

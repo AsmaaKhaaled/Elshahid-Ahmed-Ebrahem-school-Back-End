@@ -2,6 +2,24 @@ import { ClassesService } from './classes.service.js';
 import { ApiResponse } from '../../shared/utils/api-response.js';
 
 export class ClassesController {
+  static async getStructure(req, res, next) {
+    try {
+      const grades = await ClassesService.getStructure();
+      return ApiResponse.success(res, { statusCode: 200, message: 'Class structure retrieved successfully', data: { grades } });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async saveStructure(req, res, next) {
+    try {
+      const grades = await ClassesService.saveStructure(req.body);
+      return ApiResponse.success(res, { statusCode: 200, message: 'Class structure saved successfully', data: { grades } });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async getAll(req, res, next) {
     try {
       const classes = await ClassesService.getClasses(req.query);

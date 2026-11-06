@@ -131,7 +131,7 @@ const schemas = {
         type: 'string',
         format: 'password',
         minLength: 8,
-        description: 'At least 8 chars with letters and digits. Cannot be Student@2026 or Teacher@2026.',
+        description: "At least 8 chars with letters and digits. Cannot be Student@2026, Teacher@2026, or the student's own code.",
       },
       confirmPassword: { type: 'string', format: 'password' },
     },
@@ -475,7 +475,7 @@ const paths = {
       tags: ['Auth'],
       summary: 'Unified login (Admin, Teacher, Student)',
       description:
-        'Returns a standard `token`. On first login with a default password it returns a short-lived `tempToken` instead — use it for `/auth/set-initial-password`.',
+        'Returns a standard `token`. On first login with a default password it returns a short-lived `tempToken` instead — use it for `/auth/set-initial-password`. A student signs in the first time with their national ID as `identifier` and their school student code as `password`, then chooses a personal password.',
       security: [],
       requestBody: jsonBody(ref('LoginRequest')),
       responses: { ...responses(200, 422), 401: { description: 'Invalid credentials' } },
@@ -915,6 +915,14 @@ const paths = {
   },
 
   // Announcements
+  '/api/v1/announcements/public': {
+    get: {
+      tags: ['Announcements'],
+      summary: 'Announcements addressed to visitors (no sign-in): school-wide, active, not expired',
+      security: [],
+      responses: responses(200),
+    },
+  },
   ...crud({
     tag: 'Announcements',
     base: '/api/v1/announcements',
