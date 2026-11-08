@@ -26,6 +26,26 @@ export const errorHandler = (err, req, res, next) => {
     message = 'Authentication token expired';
   }
 
+  // Prisma errors a request can cause (not server faults)
+  if (err.name === 'PrismaClientKnownRequestError') {
+    if (err.code === 'P2002') {
+      statusCode = 409;
+      message = 'البيانات دي مسجلة بالفعل لسجل آخر (قيمة مكررة)';
+    } else if (err.code === 'P2025') {
+      statusCode = 404;
+      message = 'السجل المطلوب غير موجود';
+    } else if (err.code === 'P2003') {
+      statusCode = 400;
+      message = 'السجل مرتبط بسجل آخر غير موجود';
+    }
+  } else if (err.name === 'PrismaClientValidationError') {
+    statusCode = 400;
+    message = 'بيانات غير صالحة';
+  } else if (err.name === 'MulterError') {
+    statusCode = 400;
+    message = err.code === 'LIMIT_FILE_SIZE' ? 'حجم الملف أكبر من المسموح' : 'تعذر رفع الملف، تأكد من اختيار ملف واحد في خانة file';
+  }
+
   // Handle syntax errors in JSON body parser
   if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
     statusCode = 400;

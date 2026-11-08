@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { StudentsController } from './students.controller.js';
 import { studentsValidation } from './students.validation.js';
 import { validate } from '../../middlewares/validate.middleware.js';
-import { authenticate } from '../../middlewares/auth.middleware.js';
+import { authenticate, checkPermission } from '../../middlewares/auth.middleware.js';
 import { authorize } from '../../middlewares/role.middleware.js';
 import { uploadExcelMiddleware } from '../../middlewares/upload.middleware.js';
 
@@ -13,22 +13,27 @@ router.get('/excel-template', StudentsController.downloadTemplate);
 
 router.use(authenticate);
 
-// Auto-generation helpers
-router.get('/next-code', authorize('ADMIN', 'TEACHER'), StudentsController.getNextCode);
+// Managing students: SUPER_ADMIN, or an ADMIN granted the 'students' (شؤون الطلاب) section
+const manage = checkPermission('students');
 
-// Student listing and details
+// The signed-in student's own teachers
+router.get('/me/teachers', authorize('STUDENT'), StudentsController.getTeachers);
+
+router.get('/next-code', manage, StudentsController.getNextCode);
+router.get('/export', manage, StudentsController.exportExcel);
+router.post('/upload-excel', manage, uploadExcelMiddleware, StudentsController.uploadExcel);
+router.post('/bulk-import', manage, validate(studentsValidation.bulkImport), StudentsController.bulkImport);
+router.post('/distribute', manage, validate(studentsValidation.distribute), StudentsController.distribute);
+
+// Reading: every admin (other pages count students), a teacher only their own classes' students
 router.get('/', authorize('ADMIN', 'TEACHER'), StudentsController.getAll);
-router.get('/:id', authorize('ADMIN', 'TEACHER', 'PARENT', 'STUDENT'), StudentsController.getById);
+router.get('/:id', authorize('ADMIN', 'TEACHER', 'STUDENT'), StudentsController.getById);
+router.get('/:id/card', authorize('ADMIN', 'TEACHER', 'STUDENT'), StudentsController.generateCard);
+router.get('/:id/teachers', authorize('ADMIN', 'TEACHER', 'STUDENT'), StudentsController.getTeachers);
 
-// Card generation
-router.get('/:id/card', authorize('ADMIN', 'TEACHER', 'PARENT', 'STUDENT'), StudentsController.generateCard);
-
-// Admin-only management
-router.post('/', authorize('ADMIN'), validate(studentsValidation.createStudent), StudentsController.create);
-router.post('/upload-excel', authorize('ADMIN'), uploadExcelMiddleware, StudentsController.uploadExcel);
-router.post('/bulk-import', authorize('ADMIN'), validate(studentsValidation.bulkImport), StudentsController.bulkImport);
-router.patch('/:id/enroll', authorize('ADMIN'), validate(studentsValidation.enroll), StudentsController.enroll);
-router.put('/:id', authorize('ADMIN'), validate(studentsValidation.updateStudent), StudentsController.update);
-router.delete('/:id', authorize('ADMIN'), StudentsController.remove);
+router.post('/', manage, validate(studentsValidation.createStudent), StudentsController.create);
+router.patch('/:id/enroll', manage, validate(studentsValidation.enroll), StudentsController.enroll);
+router.put('/:id', manage, validate(studentsValidation.updateStudent), StudentsController.update);
+router.delete('/:id', manage, StudentsController.remove);
 
 export default router;

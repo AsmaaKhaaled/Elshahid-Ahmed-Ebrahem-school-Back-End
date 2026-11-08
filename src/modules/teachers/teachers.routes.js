@@ -8,7 +8,8 @@ const router = Router();
 
 router.use(verifyToken);
 
-// Reading: every admin (other pages list teachers, e.g. class advisors) and teachers (a reduced view)
+// Reading: every admin (other pages list teachers, e.g. class advisors) and teachers.
+// National IDs, phones & accounts only for whoever manages teachers; everyone else gets a reduced view.
 router.get('/', requireRoles(['SUPER_ADMIN', 'ADMIN', 'TEACHER']), TeachersController.getAll);
 
 // The signed-in teacher's own classes and their students (the admin assigns them on the teachers page)
@@ -20,6 +21,8 @@ router.get('/class-options', checkPermission('teachers'), TeachersController.get
 router.get('/:id', checkPermission('teachers'), TeachersController.getById);
 router.post('/', checkPermission('teachers'), validate(teachersValidation.createTeacher), TeachersController.create);
 router.put('/:id', checkPermission('teachers'), validate(teachersValidation.updateTeacher), TeachersController.update);
+router.patch('/:id/deactivate', checkPermission('teachers'), TeachersController.deactivate);
+router.patch('/:id/activate', checkPermission('teachers'), TeachersController.activate);
 router.delete('/:id', checkPermission('teachers'), TeachersController.remove);
 
 export default router;

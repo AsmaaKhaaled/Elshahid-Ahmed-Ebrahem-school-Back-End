@@ -31,7 +31,7 @@ export class UsersController {
 
   static async getMe(req, res, next) {
     try {
-      const user = await UsersService.getMe(req.user.id);
+      const user = await UsersService.getMe(req.user);
       return ApiResponse.success(res, {
         statusCode: 200,
         message: 'User profile retrieved successfully',
@@ -44,7 +44,7 @@ export class UsersController {
 
   static async changePassword(req, res, next) {
     try {
-      const updatedUser = await UsersService.changePassword(req.user.id, req.body);
+      const updatedUser = await UsersService.changePassword(req.user, req.body);
       return ApiResponse.success(res, {
         statusCode: 200,
         message: 'Password changed successfully',

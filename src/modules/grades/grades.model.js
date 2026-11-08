@@ -32,6 +32,7 @@ export class GradeModel {
         subject: { select: { id: true, code: true, nameArabic: true } },
         class: { select: { id: true, name: true } },
         announcedBy: { select: { id: true, name: true } },
+        announcedByTeacher: { select: { id: true, fullNameArabic: true } },
       },
       orderBy: { examDate: 'asc' },
     });
@@ -44,6 +45,7 @@ export class GradeModel {
         subject: true,
         class: true,
         announcedBy: { select: { id: true, name: true } },
+        announcedByTeacher: { select: { id: true, fullNameArabic: true } },
         grades: {
           include: {
             student: { select: { id: true, studentCode: true, fullNameArabic: true } },
@@ -65,7 +67,9 @@ export class GradeModel {
         maxScore: Number(data.maxScore) || 100,
         passScore: Number(data.passScore) || 50,
         room: data.room || null,
+        // An admin (users) or a teacher (teachers)
         announcedById: data.announcedById || null,
+        announcedByTeacherId: data.announcedByTeacherId || null,
       },
       include: {
         subject: true,
@@ -110,8 +114,10 @@ export class GradeModel {
   }
 
   // --- Marks Recording Logic ---
-  static async findAllGrades({ studentId, examId, subjectId } = {}) {
-    const where = {};
+  /** `visible`: what the viewer may see (a Prisma condition), on top of the filters. */
+  static async findAllGrades({ studentId, examId, subjectId } = {}, visible = {}) {
+    // Its own AND item, so a filter (e.g. ?studentId=) can't replace it
+    const where = { AND: [visible] };
 
     if (studentId) {
       where.studentId = studentId;
@@ -132,6 +138,7 @@ export class GradeModel {
         exam: { select: { id: true, title: true, type: true, examDate: true } },
         subject: { select: { id: true, code: true, nameArabic: true } },
         recordedBy: { select: { id: true, name: true } },
+        recordedByTeacher: { select: { id: true, fullNameArabic: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -145,6 +152,7 @@ export class GradeModel {
         exam: true,
         subject: true,
         recordedBy: { select: { id: true, name: true } },
+        recordedByTeacher: { select: { id: true, fullNameArabic: true } },
       },
     });
   }
@@ -168,7 +176,9 @@ export class GradeModel {
         percentage,
         gradeLetter,
         remarks: data.remarks || null,
+        // An admin (users) or a teacher (teachers)
         recordedById: data.recordedById || null,
+        recordedByTeacherId: data.recordedByTeacherId || null,
       },
       create: {
         studentId: data.studentId,
@@ -180,6 +190,7 @@ export class GradeModel {
         gradeLetter,
         remarks: data.remarks || null,
         recordedById: data.recordedById || null,
+        recordedByTeacherId: data.recordedByTeacherId || null,
       },
       include: {
         student: true,
@@ -189,7 +200,12 @@ export class GradeModel {
     });
   }
 
-  static async recordBulkMarks(marksList, recordedById) {
+  /** `recordedBy`: { recordedById, recordedByTeacherId } (an admin or a teacher). */
+  static async recordBulkMarks(marksList, recordedBy = {}) {
+    const recorder = {
+      recordedById: recordedBy.recordedById || null,
+      recordedByTeacherId: recordedBy.recordedByTeacherId || null,
+    };
     const operations = marksList.map((item) => {
       const score = Number(item.score);
       const maxScore = Number(item.maxScore) || 100;
@@ -209,7 +225,7 @@ export class GradeModel {
           percentage,
           gradeLetter,
           remarks: item.remarks || null,
-          recordedById: recordedById || null,
+          ...recorder,
         },
         create: {
           studentId: item.studentId,
@@ -220,7 +236,7 @@ export class GradeModel {
           percentage,
           gradeLetter,
           remarks: item.remarks || null,
-          recordedById: recordedById || null,
+          ...recorder,
         },
         include: {
           student: true,

@@ -16,9 +16,9 @@ export const usersValidation = {
       errors.push({ field: 'password', message: 'Password must be at least 6 characters' });
     }
 
-    const validRoles = ['ADMIN', 'TEACHER', 'STUDENT', 'PARENT'];
-    if (role && !validRoles.includes(role)) {
-      errors.push({ field: 'role', message: `Role must be one of: ${validRoles.join(', ')}` });
+    // "users" is for the administration: teachers & students are added on their own pages
+    if (role && role !== 'ADMIN') {
+      errors.push({ field: 'role', message: 'Only ADMIN accounts are created here (teachers & students have their own pages)' });
     }
 
     if (errors.length > 0) {
@@ -42,9 +42,8 @@ export const usersValidation = {
       }
     }
 
-    const validRoles = ['ADMIN', 'TEACHER', 'STUDENT', 'PARENT'];
-    if (role !== undefined && !validRoles.includes(role)) {
-      errors.push({ field: 'role', message: `Role must be one of: ${validRoles.join(', ')}` });
+    if (role !== undefined) {
+      errors.push({ field: 'role', message: 'The role is not changed here' });
     }
 
     if (errors.length > 0) {

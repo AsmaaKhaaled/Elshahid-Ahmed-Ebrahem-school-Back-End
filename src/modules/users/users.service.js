@@ -1,6 +1,7 @@
-import bcrypt from 'bcryptjs';
 import { UserModel } from './users.model.js';
 import { AppError } from '../../shared/errors/app-error.js';
+import { AuthService } from '../auth/auth.service.js';
+import { assertIdentityFree } from '../auth/accounts.js';
 
 export class UsersService {
   static async getUsers(query) {
@@ -15,44 +16,24 @@ export class UsersService {
     return user;
   }
 
-  static async getMe(id) {
-    const user = await UserModel.findById(id);
-    if (!user) {
-      throw AppError.notFound('User profile not found');
-    }
-    return user;
+  /** Any signed-in account (admin, teacher or student): same as GET /auth/me */
+  static async getMe(sessionUser) {
+    return AuthService.getCurrentUser(sessionUser);
   }
 
-  static async changePassword(id, { currentPassword, newPassword }) {
-    const userWithPassword = await UserModel.findByIdWithPassword(id);
-    if (!userWithPassword) {
-      throw AppError.notFound('User not found');
-    }
-
-    const isMatch = await bcrypt.compare(currentPassword, userWithPassword.password);
-    if (!isMatch) {
-      throw AppError.badRequest('Current password does not match');
-    }
-
-    const updatedUser = await UserModel.changePassword(id, newPassword);
-    return updatedUser;
+  /** Any signed-in account: same as PATCH /auth/change-password */
+  static async changePassword(sessionUser, { currentPassword, newPassword }) {
+    return AuthService.changePassword(sessionUser, currentPassword, newPassword);
   }
 
   static async createUser(data) {
-    const existing = await UserModel.findByEmail(data.email);
-    if (existing) {
-      throw AppError.conflict('User with this email already exists');
-    }
+    // Not taken by any account: admin, teacher or student
+    await assertIdentityFree({ nationalId: data.nationalId, email: data.email?.toLowerCase() });
     return UserModel.create(data);
   }
 
   static async updateUser(id, data) {
-    if (data.email) {
-      const existing = await UserModel.findByEmail(data.email);
-      if (existing && existing.id !== id) {
-        throw AppError.conflict('Email is already taken by another user');
-      }
-    }
+    await assertIdentityFree({ nationalId: data.nationalId, email: data.email?.toLowerCase() }, { model: 'user', id });
     const updated = await UserModel.update(id, data);
     if (!updated) {
       throw AppError.notFound(`User with id '${id}' not found`);

@@ -1,7 +1,8 @@
 import { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { env } from './env.js';
-import { prisma } from './database.js';
+import { findAccount, readerOf, toSessionUser } from '../modules/auth/accounts.js';
+import { AnnouncementModel } from '../modules/announcements/announcements.model.js';
 
 let io = null;
 
@@ -57,24 +58,15 @@ export const initSocket = (httpServer) => {
         return next();
       }
 
-      const user = await prisma.user.findUnique({
-        where: { id: decoded.id },
-        select: {
-          id: true,
-          role: true,
-          fullName: true,
-          status: true,
-          studentProfile: { select: { id: true, classId: true } },
-          teacherProfile: { select: { id: true } },
-        },
-      });
+      // The account from its own table (users / teachers / students), by the token's role
+      const account = await findAccount(decoded.role, decoded.id);
 
-      if (!user || user.status !== 'ACTIVE') {
+      if (!account || account.status !== 'ACTIVE') {
         socket.user = { role: 'GUEST', id: null };
         return next();
       }
 
-      socket.user = user;
+      socket.user = toSessionUser(account);
       return next();
     } catch (err) {
       // If token expired or invalid, treat as guest rather than abruptly dropping connection
@@ -107,20 +99,9 @@ export const initSocket = (httpServer) => {
     // Handle mark as read event from socket if sent via websocket
     socket.on('announcement:mark_read', async (data) => {
       try {
-        if (!user.id || !data?.announcementId) return;
-        await prisma.announcementRead.upsert({
-          where: {
-            unique_announcement_user_read: {
-              announcementId: data.announcementId,
-              userId: user.id,
-            },
-          },
-          update: { readAt: new Date() },
-          create: {
-            announcementId: data.announcementId,
-            userId: user.id,
-          },
-        });
+        const reader = readerOf(user);
+        if (!reader || !data?.announcementId) return;
+        await AnnouncementModel.markAsRead(data.announcementId, reader);
 
         // Notify this user's sessions of updated read state
         io.to(`user_${user.id}`).emit('announcement:read_confirmed', {

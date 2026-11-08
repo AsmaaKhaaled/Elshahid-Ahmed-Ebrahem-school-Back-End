@@ -1,11 +1,12 @@
 import { AttendanceService } from './attendance.service.js';
 import { ApiResponse } from '../../shared/utils/api-response.js';
 import { AppError } from '../../shared/errors/app-error.js';
+import { doneBy } from '../auth/accounts.js';
 
 export class AttendanceController {
   static async getAll(req, res, next) {
     try {
-      const records = await AttendanceService.getAttendance(req.query);
+      const records = await AttendanceService.getAttendance(req.query, req.user);
       return ApiResponse.success(res, {
         statusCode: 200,
         message: 'Attendance records retrieved successfully',
@@ -19,13 +20,8 @@ export class AttendanceController {
 
   static async getById(req, res, next) {
     try {
-      const record = await AttendanceService.getAttendanceById(req.params.id);
-      if (req.user.role === 'STUDENT') {
-        const studentProfileId = req.user.studentProfile?.id;
-        if (!studentProfileId || (record.studentId !== studentProfileId && record.student?.userId !== req.user.id)) {
-          throw AppError.forbidden('غير مصرح لك بالاطلاع على هذا السجل');
-        }
-      }
+      // Only a record the viewer may see (a student: their own; a teacher: their classes)
+      const record = await AttendanceService.getAttendanceById(req.params.id, req.user);
       return ApiResponse.success(res, {
         statusCode: 200,
         message: 'Attendance record retrieved successfully',
@@ -44,7 +40,7 @@ export class AttendanceController {
           throw AppError.forbidden('غير مصرح لك بالاطلاع على سجل حضور طالب آخر');
         }
       }
-      const rate = await AttendanceService.getStudentAttendanceRate(req.params.studentId);
+      const rate = await AttendanceService.getStudentAttendanceRate(req.params.studentId, req.user);
       return ApiResponse.success(res, {
         statusCode: 200,
         message: 'Student attendance rate calculated successfully',
@@ -57,7 +53,7 @@ export class AttendanceController {
 
   static async getClassRate(req, res, next) {
     try {
-      const rate = await AttendanceService.getClassAttendanceRate(req.params.classId, req.query.date);
+      const rate = await AttendanceService.getClassAttendanceRate(req.params.classId, req.query.date, req.user);
       return ApiResponse.success(res, {
         statusCode: 200,
         message: 'Class attendance rate calculated successfully',
@@ -72,9 +68,10 @@ export class AttendanceController {
     try {
       const payload = {
         ...req.body,
-        recordedById: req.user.id,
+        // An admin (users) or a teacher (teachers)
+        ...doneBy(req.user, 'recordedById', 'recordedByTeacherId'),
       };
-      const record = await AttendanceService.recordAttendance(payload);
+      const record = await AttendanceService.recordAttendance(payload, req.user);
       return ApiResponse.created(res, record, 'Attendance recorded successfully');
     } catch (error) {
       next(error);
@@ -85,9 +82,9 @@ export class AttendanceController {
     try {
       const payload = {
         ...req.body,
-        recordedById: req.user.id,
+        recordedBy: doneBy(req.user, 'recordedById', 'recordedByTeacherId'),
       };
-      const result = await AttendanceService.recordDailyClassAttendance(payload);
+      const result = await AttendanceService.recordDailyClassAttendance(payload, req.user);
       return ApiResponse.created(res, result, 'Daily class attendance recorded successfully');
     } catch (error) {
       next(error);
@@ -96,7 +93,7 @@ export class AttendanceController {
 
   static async update(req, res, next) {
     try {
-      const updated = await AttendanceService.updateAttendance(req.params.id, req.body);
+      const updated = await AttendanceService.updateAttendance(req.params.id, req.body, req.user);
       return ApiResponse.success(res, {
         statusCode: 200,
         message: 'Attendance updated successfully',

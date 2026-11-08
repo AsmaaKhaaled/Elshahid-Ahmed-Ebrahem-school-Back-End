@@ -15,16 +15,16 @@ export const isValidDate = (value) => {
   return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
 };
 
-const result = (errors) => (errors.length ? { message: 'Validation failed', details: errors } : null);
+const result = (errors) => (errors.length ? { message: 'فشل التحقق من صحة البيانات', details: errors } : null);
 
 const checkOptionalTime = (value, field, errors) => {
   if (value !== undefined && value !== null && value !== '' && (typeof value !== 'string' || !TIME_REGEX.test(value))) {
-    errors.push({ field, message: `${field} must be a time in HH:mm format` });
+    errors.push({ field, message: 'الوقت يجب أن يكون بالشكل HH:mm (مثال 07:45)' });
   }
 };
 
 export const teacherAttendanceValidation = {
-  dateParam: (req) => (isValidDate(req.params.date) ? null : { message: 'Date must be in YYYY-MM-DD format' }),
+  dateParam: (req) => (isValidDate(req.params.date) ? null : { message: 'التاريخ يجب أن يكون بالشكل YYYY-MM-DD' }),
 
   /**
    * PUT /day/:date
@@ -33,12 +33,12 @@ export const teacherAttendanceValidation = {
   saveDay: (req) => {
     const errors = [];
     if (!isValidDate(req.params.date)) {
-      errors.push({ field: 'date', message: 'Date must be in YYYY-MM-DD format' });
+      errors.push({ field: 'date', message: 'التاريخ يجب أن يكون بالشكل YYYY-MM-DD' });
     }
 
     const { records } = req.body || {};
     if (!Array.isArray(records) || records.length === 0) {
-      errors.push({ field: 'records', message: 'records must be a non-empty array' });
+      errors.push({ field: 'records', message: 'يجب إرسال قائمة الحضور (records)' });
       return result(errors);
     }
 
@@ -46,19 +46,19 @@ export const teacherAttendanceValidation = {
     records.forEach((record, index) => {
       const prefix = `records[${index}]`;
       if (!record || typeof record.teacherId !== 'string' || !record.teacherId) {
-        errors.push({ field: `${prefix}.teacherId`, message: 'teacherId is required' });
+        errors.push({ field: `${prefix}.teacherId`, message: 'معرف المعلم مطلوب' });
       } else if (seen.has(record.teacherId)) {
-        errors.push({ field: `${prefix}.teacherId`, message: 'Each teacher can appear only once' });
+        errors.push({ field: `${prefix}.teacherId`, message: 'المعلم متكرر في القائمة' });
       } else {
         seen.add(record.teacherId);
       }
       if (!TEACHER_ATTENDANCE_STATUSES.includes(record?.status)) {
-        errors.push({ field: `${prefix}.status`, message: `status must be one of: ${TEACHER_ATTENDANCE_STATUSES.join(', ')}` });
+        errors.push({ field: `${prefix}.status`, message: 'حالة الحضور غير صحيحة' });
       }
       checkOptionalTime(record?.arrivalTime, `${prefix}.arrivalTime`, errors);
       checkOptionalTime(record?.departureTime, `${prefix}.departureTime`, errors);
       if (record?.note !== undefined && record?.note !== null && (typeof record.note !== 'string' || record.note.length > MAX_NOTE_LENGTH)) {
-        errors.push({ field: `${prefix}.note`, message: `note must be text up to ${MAX_NOTE_LENGTH} characters` });
+        errors.push({ field: `${prefix}.note`, message: `الملاحظة نص بحد أقصى ${MAX_NOTE_LENGTH} حرف` });
       }
     });
     return result(errors);
@@ -71,21 +71,21 @@ export const teacherAttendanceValidation = {
   archiveQuery: (req) => {
     const { from, to, status, page, limit, pageSize } = req.query || {};
     const errors = [];
-    if (from !== undefined && !isValidDate(from)) errors.push({ field: 'from', message: 'from must be YYYY-MM-DD' });
-    if (to !== undefined && !isValidDate(to)) errors.push({ field: 'to', message: 'to must be YYYY-MM-DD' });
-    if (isValidDate(from) && isValidDate(to) && from > to) errors.push({ field: 'from', message: 'from must be before to' });
+    if (from !== undefined && !isValidDate(from)) errors.push({ field: 'from', message: 'تاريخ البداية يجب أن يكون بالشكل YYYY-MM-DD' });
+    if (to !== undefined && !isValidDate(to)) errors.push({ field: 'to', message: 'تاريخ النهاية يجب أن يكون بالشكل YYYY-MM-DD' });
+    if (isValidDate(from) && isValidDate(to) && from > to) errors.push({ field: 'from', message: 'تاريخ البداية يجب أن يكون قبل تاريخ النهاية' });
     if (status !== undefined && !ARCHIVE_STATUSES.includes(status)) {
-      errors.push({ field: 'status', message: `status must be one of: ${ARCHIVE_STATUSES.join(', ')}` });
+      errors.push({ field: 'status', message: 'حالة الحضور غير صحيحة' });
     }
     if (page !== undefined && !(Number.isInteger(Number(page)) && Number(page) >= 1)) {
-      errors.push({ field: 'page', message: 'page must be a positive integer' });
+      errors.push({ field: 'page', message: 'رقم الصفحة غير صحيح' });
     }
     const isPageSize = (value) => Number.isInteger(Number(value)) && Number(value) >= 1 && Number(value) <= 100;
     if (limit !== undefined && !isPageSize(limit)) {
-      errors.push({ field: 'limit', message: 'limit must be between 1 and 100' });
+      errors.push({ field: 'limit', message: 'عدد السجلات في الصفحة من 1 إلى 100' });
     }
     if (pageSize !== undefined && !isPageSize(pageSize)) {
-      errors.push({ field: 'pageSize', message: 'pageSize must be between 1 and 100' });
+      errors.push({ field: 'pageSize', message: 'عدد السجلات في الصفحة من 1 إلى 100' });
     }
     return result(errors);
   },
@@ -97,15 +97,15 @@ export const teacherAttendanceValidation = {
   createHoliday: (req) => {
     const { startDate, endDate, reason } = req.body || {};
     const errors = [];
-    if (!isValidDate(startDate)) errors.push({ field: 'startDate', message: 'startDate must be YYYY-MM-DD' });
+    if (!isValidDate(startDate)) errors.push({ field: 'startDate', message: 'تاريخ بداية الإجازة يجب أن يكون بالشكل YYYY-MM-DD' });
     if (endDate !== undefined && endDate !== null && endDate !== '' && !isValidDate(endDate)) {
-      errors.push({ field: 'endDate', message: 'endDate must be YYYY-MM-DD' });
+      errors.push({ field: 'endDate', message: 'تاريخ نهاية الإجازة يجب أن يكون بالشكل YYYY-MM-DD' });
     }
     if (isValidDate(startDate) && isValidDate(endDate) && startDate > endDate) {
-      errors.push({ field: 'endDate', message: 'endDate must be on or after startDate' });
+      errors.push({ field: 'endDate', message: 'نهاية الإجازة يجب أن تكون في نفس يوم البداية أو بعده' });
     }
     if (typeof reason !== 'string' || reason.trim().length < 2 || reason.trim().length > MAX_REASON_LENGTH) {
-      errors.push({ field: 'reason', message: `reason must be 2-${MAX_REASON_LENGTH} characters` });
+      errors.push({ field: 'reason', message: `سبب الإجازة من 2 إلى ${MAX_REASON_LENGTH} حرف` });
     }
     return result(errors);
   },

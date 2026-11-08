@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { prisma } from '../../config/database.js';
 import { AppError } from '../../shared/errors/app-error.js';
+import { assertIdentityFree } from '../auth/accounts.js';
 
 export class AdminService {
   /**
@@ -32,27 +33,10 @@ export class AdminService {
   }
 
   /**
-   * Throws 409 when the national ID or email already belongs to another user
+   * Throws 409 when the national ID or email already belongs to another account (admin, teacher or student)
    */
   static async assertUniqueIdentity({ nationalId, email }, exceptId) {
-    const conditions = [];
-    if (nationalId) conditions.push({ nationalId });
-    if (email) conditions.push({ email });
-    if (conditions.length === 0) return;
-
-    const existing = await prisma.user.findFirst({
-      where: {
-        OR: conditions,
-        ...(exceptId && { NOT: { id: exceptId } }),
-      },
-      select: { nationalId: true, email: true },
-    });
-
-    if (!existing) return;
-    if (nationalId && existing.nationalId === nationalId) {
-      throw AppError.conflict('الرقم القومي مسجل بالفعل لمستخدم آخر');
-    }
-    throw AppError.conflict('البريد الإلكتروني مسجل بالفعل لمستخدم آخر');
+    await assertIdentityFree({ nationalId, email }, { model: 'user', id: exceptId });
   }
 
   /**

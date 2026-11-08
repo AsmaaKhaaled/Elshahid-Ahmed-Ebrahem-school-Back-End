@@ -1,5 +1,9 @@
 import bcrypt from 'bcryptjs';
 import { prisma } from '../../config/database.js';
+import { ADMIN_ROLES } from '../auth/accounts.js';
+
+// "users" holds the school administration's accounts only (teachers & students have their own tables)
+const UPDATABLE_FIELDS = ['fullName', 'name', 'email', 'nationalId', 'phone', 'status', 'password'];
 
 export class UserModel {
   static get userSelectFields() {
@@ -9,7 +13,6 @@ export class UserModel {
       name: true,
       email: true,
       nationalId: true,
-      studentCode: true,
       role: true,
       status: true,
       permissions: true,
@@ -20,9 +23,9 @@ export class UserModel {
   }
 
   static async findAll({ role, search } = {}) {
-    const where = {};
+    const where = { role: { in: ADMIN_ROLES } };
 
-    if (role) {
+    if (role && ADMIN_ROLES.includes(role.toUpperCase())) {
       where.role = role.toUpperCase();
     }
 
@@ -72,9 +75,8 @@ export class UserModel {
         name: fullName,
         email: data.email ? data.email.toLowerCase() : null,
         nationalId: data.nationalId || null,
-        studentCode: data.studentCode || null,
         password: hashedPassword,
-        role: data.role || 'STUDENT',
+        role: 'ADMIN',
         status: data.status || 'ACTIVE',
         phone: data.phone || null,
         permissions: Array.isArray(data.permissions) ? data.permissions : [],
@@ -84,7 +86,8 @@ export class UserModel {
   }
 
   static async update(id, data) {
-    const updateData = { ...data };
+    // The account's own fields only (not its role or permissions: those are managed on the admins page)
+    const updateData = Object.fromEntries(UPDATABLE_FIELDS.filter((key) => data[key] !== undefined).map((key) => [key, data[key]]));
 
     if (updateData.password) {
       const salt = await bcrypt.genSalt(10);

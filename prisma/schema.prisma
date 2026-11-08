@@ -31,15 +31,16 @@ enum Gender {
   FEMALE
 }
 
+// The school administration's accounts only (SUPER_ADMIN & ADMIN).
+// Teachers' and students' accounts live in their own tables (teachers / students).
 model User {
   id                  String     @id @default(uuid())
   nationalId          String?    @unique // الرقم القومي (14 رقم)
-  studentCode         String?    @unique // كود الطالب
-  email               String?    @unique // إيميل المدير أو المعلم
+  email               String?    @unique // إيميل المسؤول
   fullName            String     @default("")
   name                String?
   password            String // Bcrypt Hashed Password
-  role                Role       @default(STUDENT)
+  role                Role       @default(ADMIN)
   status              UserStatus @default(ACTIVE)
   forcePasswordChange Boolean    @default(false)
   phone               String?
@@ -48,11 +49,7 @@ model User {
   // صلاحيات المسؤول الفرعي:
   permissions String[] @default([])
 
-  // Profile Relations
-  studentProfile Student?
-  teacherProfile Teacher?
-
-  // Operational Relations
+  // What the administration did (a teacher's own actions are on the teacher)
   recordedAttendances        Attendance[]           @relation("AttendanceRecorder")
   recordedGrades             Grade[]                @relation("GradeRecorder")
   announcedExams             Exam[]                 @relation("ExamAnnouncer")
@@ -68,7 +65,6 @@ model User {
 
   @@index([email])
   @@index([nationalId])
-  @@index([studentCode])
   @@map("users")
 }
 
@@ -78,7 +74,6 @@ model User {
 
 model Student {
   id              String   @id @default(cuid())
-  userId          String?  @unique
   studentCode     String   @unique
   fullNameArabic  String
   fullNameEnglish String?
@@ -92,16 +87,22 @@ model Student {
   gradeLevel      String?
   enrollmentStatus String?  @default("منتظم")
   isActive        Boolean  @default(true)
+
+  // Sign-in account: national ID + student code the first time, then the student's own password
+  password            String? // Bcrypt hash (never returned: omitted by default, see config/database.js)
+  role                Role       @default(STUDENT)
+  status              UserStatus @default(ACTIVE)
+  forcePasswordChange Boolean    @default(true)
+
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  user        User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
-  class       Class?       @relation(fields: [classId], references: [id], onDelete: SetNull)
-  attendances Attendance[]
-  grades      Grade[]
+  class             Class?             @relation(fields: [classId], references: [id], onDelete: SetNull)
+  attendances       Attendance[]
+  grades            Grade[]
+  announcementReads AnnouncementRead[]
 
   @@index([classId])
-  @@index([userId])
   @@index([gradeLevel])
   @@map("students")
 }
@@ -118,7 +119,6 @@ enum TeacherEmploymentStatus {
 
 model Teacher {
   id               String                  @id @default(cuid())
-  userId           String?                 @unique
   teacherCode      String                  @unique
   fullNameArabic   String
   fullNameEnglish  String?
@@ -134,10 +134,16 @@ model Teacher {
   phone            String?
   hireDate         String?
   isActive         Boolean                 @default(true)
+
+  // Sign-in account for the teachers portal (national ID + password; the first sign-in asks for a new one)
+  password            String? // Bcrypt hash (never returned: omitted by default, see config/database.js)
+  role                Role       @default(TEACHER)
+  status              UserStatus @default(ACTIVE)
+  forcePasswordChange Boolean    @default(true)
+
   createdAt        DateTime                @default(now())
   updatedAt        DateTime                @updatedAt
 
-  user              User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
   supervisedClasses Class[]             @relation("ClassTeacherSupervisor")
   subjects          Subject[]           @relation("TeacherSubjects")
   classes           Class[]             @relation("TeacherClasses")
@@ -145,6 +151,14 @@ model Teacher {
   timetablePeriods  TimetablePeriod[]
   attendanceRecords TeacherAttendance[]
   curricula         Curriculum[]
+
+  // What the teacher did
+  recordedAttendances   Attendance[]       @relation("AttendanceTeacherRecorder")
+  recordedGrades        Grade[]            @relation("GradeTeacherRecorder")
+  announcedExams        Exam[]             @relation("ExamTeacherAnnouncer")
+  uploadedMaterials     Material[]         @relation("MaterialTeacherUploader")
+  authoredAnnouncements Announcement[]     @relation("AnnouncementTeacherAuthor")
+  announcementReads     AnnouncementRead[]
 
   @@map("teachers")
 }
@@ -186,7 +200,7 @@ model Class {
 model Subject {
   id          String   @id @default(cuid())
   code        String   @unique // e.g. "MTH-101", "SCI-101"
-  nameArabic  String
+  nameArabic  String   @unique // one of the school's subjects (src/shared/constants/school-subjects.js)
   nameEnglish String?
   gradeLevel  String
   maxMarks    Float    @default(100)
@@ -308,13 +322,15 @@ model Material {
   fileName     String?
   fileSize     String?
   description  String?
-  uploadedById String?
+  uploadedById String? // an admin (users)
+  uploadedByTeacherId String? // or a teacher
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
-  subject  Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  class    Class?  @relation(fields: [classId], references: [id], onDelete: SetNull)
-  uploader User?   @relation("MaterialUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+  subject         Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  class           Class?   @relation(fields: [classId], references: [id], onDelete: SetNull)
+  uploader        User?    @relation("MaterialUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+  teacherUploader Teacher? @relation("MaterialTeacherUploader", fields: [uploadedByTeacherId], references: [id], onDelete: SetNull)
 
   @@index([subjectId])
   @@index([classId])
@@ -339,13 +355,15 @@ model Attendance {
   classId      String
   status       AttendanceStatus @default(PRESENT)
   remarks      String?
-  recordedById String?
+  recordedById String? // an admin (users)
+  recordedByTeacherId String? // or a teacher
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 
-  student    Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  class      Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
-  recordedBy User?   @relation("AttendanceRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
+  student           Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  class             Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  recordedBy        User?    @relation("AttendanceRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
+  recordedByTeacher Teacher? @relation("AttendanceTeacherRecorder", fields: [recordedByTeacherId], references: [id], onDelete: SetNull)
 
   @@unique([studentId, date])
   @@index([classId])
@@ -376,13 +394,15 @@ model Exam {
   maxScore        Float    @default(100)
   passScore       Float    @default(50)
   room            String?
-  announcedById   String?
+  announcedById   String? // an admin (users)
+  announcedByTeacherId String? // or a teacher
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  subject     Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  class       Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
-  announcedBy User?   @relation("ExamAnnouncer", fields: [announcedById], references: [id], onDelete: SetNull)
+  subject            Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  class              Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  announcedBy        User?    @relation("ExamAnnouncer", fields: [announcedById], references: [id], onDelete: SetNull)
+  announcedByTeacher Teacher? @relation("ExamTeacherAnnouncer", fields: [announcedByTeacherId], references: [id], onDelete: SetNull)
   grades      Grade[]
 
   @@index([classId])
@@ -401,14 +421,16 @@ model Grade {
   percentage   Float
   gradeLetter  String? // A+, A, B, C, D, F
   remarks      String?
-  recordedById String?
+  recordedById String? // an admin (users)
+  recordedByTeacherId String? // or a teacher
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  student    Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  exam       Exam    @relation(fields: [examId], references: [id], onDelete: Cascade)
-  subject    Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  recordedBy User?   @relation("GradeRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
+  student           Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  exam              Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  subject           Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  recordedBy        User?    @relation("GradeRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
+  recordedByTeacher Teacher? @relation("GradeTeacherRecorder", fields: [recordedByTeacherId], references: [id], onDelete: SetNull)
 
   @@unique([studentId, examId])
   @@index([studentId])
@@ -455,30 +477,41 @@ model Announcement {
   targetAudience TargetAudience   @default(ALL)
   priority       Priority         @default(MEDIUM)
   classId        String?
-  authorId       String?
+  authorId       String? // an admin (users)
+  authorTeacherId String? // or a teacher
   authorRole     String?
   publishDate    String? // YYYY-MM-DD
   isActive       Boolean          @default(true)
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
-  class  Class? @relation(fields: [classId], references: [id], onDelete: SetNull)
-  author User?  @relation("AnnouncementAuthor", fields: [authorId], references: [id], onDelete: SetNull)
-  reads  AnnouncementRead[]
+  class         Class?   @relation(fields: [classId], references: [id], onDelete: SetNull)
+  author        User?    @relation("AnnouncementAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  teacherAuthor Teacher? @relation("AnnouncementTeacherAuthor", fields: [authorTeacherId], references: [id], onDelete: SetNull)
+  reads         AnnouncementRead[]
 
   @@map("announcements")
 }
 
+// Who read an announcement: exactly one of an admin (users), a teacher or a student
 model AnnouncementRead {
   id             String       @id @default(cuid())
   announcementId String       @map("announcement_id")
   announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
-  userId         String       @map("user_id")
-  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         String?      @map("user_id")
+  user           User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teacherId      String?      @map("teacher_id")
+  teacher        Teacher?     @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  studentId      String?      @map("student_id")
+  student        Student?     @relation(fields: [studentId], references: [id], onDelete: Cascade)
   readAt         DateTime     @default(now()) @map("read_at")
 
   @@unique([announcementId, userId], name: "unique_announcement_user_read")
+  @@unique([announcementId, teacherId], name: "unique_announcement_teacher_read")
+  @@unique([announcementId, studentId], name: "unique_announcement_student_read")
   @@index([userId])
+  @@index([teacherId])
+  @@index([studentId])
   @@index([announcementId])
   @@map("announcement_reads")
 }

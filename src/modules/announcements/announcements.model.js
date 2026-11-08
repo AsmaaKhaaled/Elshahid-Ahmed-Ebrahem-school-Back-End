@@ -1,10 +1,19 @@
 import { prisma } from '../../config/database.js';
 
+// A reader is { userId } (an admin), { teacherId } or { studentId } (see auth/accounts.js readerOf)
+const READ_UNIQUE_KEY = {
+  userId: 'unique_announcement_user_read',
+  teacherId: 'unique_announcement_teacher_read',
+  studentId: 'unique_announcement_student_read',
+};
+
+const readsOf = (reader) => (reader ? { where: reader, select: { id: true, readAt: true } } : false);
+
 export class AnnouncementModel {
   /**
-   * Find all announcements with per-user read tracking
+   * Find all announcements with per-reader read tracking
    */
-  static async findAll({ role, userId, category, search, includeExpired = false } = {}) {
+  static async findAll({ role, reader, category, search, includeExpired = false } = {}) {
     const where = {
       isActive: true,
     };
@@ -64,12 +73,7 @@ export class AnnouncementModel {
       include: {
         class: { select: { id: true, name: true } },
         author: { select: { id: true, name: true, role: true } },
-        reads: userId
-          ? {
-              where: { userId },
-              select: { id: true, readAt: true },
-            }
-          : false,
+        reads: readsOf(reader),
       },
       orderBy: [
         { pinned: 'desc' },
@@ -79,7 +83,7 @@ export class AnnouncementModel {
 
     // Format with isRead boolean
     return announcements.map((item) => {
-      const isRead = Boolean(userId && item.reads && item.reads.length > 0);
+      const isRead = Boolean(reader && item.reads && item.reads.length > 0);
       return {
         id: item.id,
         title: item.title,
@@ -140,24 +144,19 @@ export class AnnouncementModel {
   /**
    * Find announcement by ID with read status
    */
-  static async findById(id, userId = null) {
+  static async findById(id, reader = null) {
     const item = await prisma.announcement.findUnique({
       where: { id },
       include: {
         class: { select: { id: true, name: true } },
         author: { select: { id: true, name: true, role: true } },
-        reads: userId
-          ? {
-              where: { userId },
-              select: { id: true, readAt: true },
-            }
-          : false,
+        reads: readsOf(reader),
       },
     });
 
     if (!item) return null;
 
-    const isRead = Boolean(userId && item.reads && item.reads.length > 0);
+    const isRead = Boolean(reader && item.reads && item.reads.length > 0);
     return {
       id: item.id,
       title: item.title,
@@ -181,10 +180,10 @@ export class AnnouncementModel {
   }
 
   /**
-   * Count unread announcements for a specific user
+   * Count unread announcements for a reader
    */
-  static async countUnread(userId, role) {
-    if (!userId) return 0;
+  static async countUnread(reader, role) {
+    if (!reader) return 0;
 
     const todayStr = new Date().toISOString().split('T')[0];
 
@@ -195,7 +194,7 @@ export class AnnouncementModel {
         { expiresAt: { gte: todayStr } },
       ],
       reads: {
-        none: { userId },
+        none: reader,
       },
     };
 
@@ -216,28 +215,26 @@ export class AnnouncementModel {
   }
 
   /**
-   * Mark announcement as read by a user
+   * Mark announcement as read by a reader ({ userId } | { teacherId } | { studentId })
    */
-  static async markAsRead(announcementId, userId) {
+  static async markAsRead(announcementId, reader) {
+    const [column] = Object.keys(reader);
     return prisma.announcementRead.upsert({
       where: {
-        unique_announcement_user_read: {
-          announcementId,
-          userId,
-        },
+        [READ_UNIQUE_KEY[column]]: { announcementId, ...reader },
       },
       update: { readAt: new Date() },
       create: {
         announcementId,
-        userId,
+        ...reader,
       },
     });
   }
 
   /**
-   * Mark all targeted announcements as read for a user
+   * Mark all targeted announcements as read for a reader
    */
-  static async markAllAsRead(userId, role) {
+  static async markAllAsRead(reader, role) {
     const todayStr = new Date().toISOString().split('T')[0];
 
     const where = {
@@ -247,7 +244,7 @@ export class AnnouncementModel {
         { expiresAt: { gte: todayStr } },
       ],
       reads: {
-        none: { userId },
+        none: reader,
       },
     };
 
@@ -273,7 +270,7 @@ export class AnnouncementModel {
     await prisma.announcementRead.createMany({
       data: unreadList.map((a) => ({
         announcementId: a.id,
-        userId,
+        ...reader,
       })),
       skipDuplicates: true,
     });
@@ -315,7 +312,9 @@ export class AnnouncementModel {
         targetAudience,
         priority: data.priority ? data.priority.toUpperCase() : (data.category === 'عاجل وهام' ? 'URGENT' : 'MEDIUM'),
         classId: data.classId || null,
+        // An admin (users) or a teacher (teachers)
         authorId: data.authorId || null,
+        authorTeacherId: data.authorTeacherId || null,
         authorRole: data.authorRole || 'ADMIN',
         publishDate: data.publishDate || new Date().toISOString().split('T')[0],
       },

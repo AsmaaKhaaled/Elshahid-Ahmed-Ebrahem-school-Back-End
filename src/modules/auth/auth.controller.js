@@ -21,7 +21,7 @@ export class AuthController {
   static async setInitialPassword(req, res, next) {
     try {
       const { newPassword } = req.body;
-      const result = await AuthService.setInitialPassword(req.user.id, newPassword);
+      const result = await AuthService.setInitialPassword(req.user, newPassword);
       return res.status(200).json(result);
     } catch (error) {
       next(error);
@@ -34,7 +34,7 @@ export class AuthController {
    */
   static async getMe(req, res, next) {
     try {
-      const user = await AuthService.getCurrentUser(req.user.id);
+      const user = await AuthService.getCurrentUser(req.user);
       return res.status(200).json({
         status: 'success',
         user,
@@ -50,7 +50,7 @@ export class AuthController {
    */
   static async updateMe(req, res, next) {
     try {
-      const user = await AuthService.updateProfile(req.user.id, req.body);
+      const user = await AuthService.updateProfile(req.user, req.body);
       return res.status(200).json({
         status: 'success',
         message: 'تم حفظ بيانات الحساب بنجاح',
@@ -68,7 +68,7 @@ export class AuthController {
   static async changePassword(req, res, next) {
     try {
       const { currentPassword, newPassword } = req.body;
-      const result = await AuthService.changePassword(req.user.id, currentPassword, newPassword);
+      const result = await AuthService.changePassword(req.user, currentPassword, newPassword);
       return res.status(200).json(result);
     } catch (error) {
       next(error);

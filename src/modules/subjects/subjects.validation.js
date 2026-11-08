@@ -1,3 +1,7 @@
+import { SCHOOL_SUBJECT_NAMES, isSchoolSubject } from '../../shared/constants/school-subjects.js';
+
+const SUBJECT_NAME_MESSAGE = `nameArabic must be one of the school's subjects: ${SCHOOL_SUBJECT_NAMES.join(', ')}`;
+
 export const subjectsValidation = {
   createSubject: (req) => {
     const { code, nameArabic, gradeLevel } = req.body || {};
@@ -9,6 +13,8 @@ export const subjectsValidation = {
 
     if (!nameArabic || typeof nameArabic !== 'string') {
       errors.push({ field: 'nameArabic', message: 'Subject Arabic name is required' });
+    } else if (!isSchoolSubject(nameArabic)) {
+      errors.push({ field: 'nameArabic', message: SUBJECT_NAME_MESSAGE });
     }
 
     if (!gradeLevel || typeof gradeLevel !== 'string') {
@@ -25,8 +31,8 @@ export const subjectsValidation = {
     const { nameArabic, gradeLevel } = req.body || {};
     const errors = [];
 
-    if (nameArabic !== undefined && typeof nameArabic !== 'string') {
-      errors.push({ field: 'nameArabic', message: 'Subject Arabic name must be a string' });
+    if (nameArabic !== undefined && !isSchoolSubject(nameArabic)) {
+      errors.push({ field: 'nameArabic', message: SUBJECT_NAME_MESSAGE });
     }
 
     if (gradeLevel !== undefined && typeof gradeLevel !== 'string') {

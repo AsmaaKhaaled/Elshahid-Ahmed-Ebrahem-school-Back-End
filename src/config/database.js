@@ -10,6 +10,12 @@ const withPoolTimeout = (url) =>
 export const prisma = new PrismaClient({
   datasourceUrl: withPoolTimeout(env.DATABASE_URL_POOLED),
   log: env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
+  // Teachers' & students' rows carry their sign-in password: never returned unless a query asks for it
+  // (only sign-in does: `omit: { password: false }`, see modules/auth/accounts.js)
+  omit: {
+    teacher: { password: true },
+    student: { password: true },
+  },
 });
 
 // Enough for a page's first burst of requests; Prisma's default pool holds (physical CPU cores × 2 + 1)

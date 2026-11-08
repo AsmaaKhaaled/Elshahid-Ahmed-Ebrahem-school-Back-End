@@ -1,8 +1,10 @@
 import { prisma } from '../../config/database.js';
 
 export class AttendanceModel {
-  static async findAll({ classId, studentId, date, status } = {}) {
-    const where = {};
+  /** `visible`: what the viewer may see (a Prisma condition), on top of the filters. */
+  static async findAll({ classId, studentId, date, status } = {}, visible = {}) {
+    // Its own AND item, so a filter (e.g. ?classId=) can't replace it
+    const where = { AND: [visible] };
 
     if (classId) {
       where.classId = classId;
@@ -26,6 +28,7 @@ export class AttendanceModel {
         student: { select: { id: true, studentCode: true, fullNameArabic: true } },
         class: { select: { id: true, name: true } },
         recordedBy: { select: { id: true, name: true } },
+        recordedByTeacher: { select: { id: true, fullNameArabic: true } },
       },
       orderBy: { date: 'desc' },
     });
@@ -38,6 +41,7 @@ export class AttendanceModel {
         student: true,
         class: true,
         recordedBy: { select: { id: true, name: true } },
+        recordedByTeacher: { select: { id: true, fullNameArabic: true } },
       },
     });
   }
@@ -53,7 +57,9 @@ export class AttendanceModel {
       update: {
         status: data.status ? data.status.toUpperCase() : 'PRESENT',
         remarks: data.remarks || null,
+        // An admin (users) or a teacher (teachers)
         recordedById: data.recordedById || null,
+        recordedByTeacherId: data.recordedByTeacherId || null,
       },
       create: {
         studentId: data.studentId,
@@ -62,6 +68,7 @@ export class AttendanceModel {
         status: data.status ? data.status.toUpperCase() : 'PRESENT',
         remarks: data.remarks || null,
         recordedById: data.recordedById || null,
+        recordedByTeacherId: data.recordedByTeacherId || null,
       },
     });
   }

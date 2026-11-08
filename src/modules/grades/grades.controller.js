@@ -1,6 +1,7 @@
 import { GradesService } from './grades.service.js';
 import { ApiResponse } from '../../shared/utils/api-response.js';
 import { AppError } from '../../shared/errors/app-error.js';
+import { doneBy } from '../auth/accounts.js';
 
 export class GradesController {
   // --- Exam Schedules ---
@@ -35,9 +36,10 @@ export class GradesController {
     try {
       const payload = {
         ...req.body,
-        announcedById: req.user.id,
+        // An admin (users) or a teacher (teachers)
+        ...doneBy(req.user, 'announcedById', 'announcedByTeacherId'),
       };
-      const exam = await GradesService.createExam(payload);
+      const exam = await GradesService.createExam(payload, req.user);
       return ApiResponse.created(res, exam, 'Exam schedule announced successfully');
     } catch (error) {
       next(error);
@@ -46,7 +48,7 @@ export class GradesController {
 
   static async updateExam(req, res, next) {
     try {
-      const updated = await GradesService.updateExam(req.params.id, req.body);
+      const updated = await GradesService.updateExam(req.params.id, req.body, req.user);
       return ApiResponse.success(res, {
         statusCode: 200,
         message: 'Exam schedule updated successfully',
@@ -72,7 +74,7 @@ export class GradesController {
   // --- Marks Recording ---
   static async getAll(req, res, next) {
     try {
-      const grades = await GradesService.getGrades(req.query);
+      const grades = await GradesService.getGrades(req.query, req.user);
       return ApiResponse.success(res, {
         statusCode: 200,
         message: 'Grades retrieved successfully',
@@ -86,13 +88,8 @@ export class GradesController {
 
   static async getById(req, res, next) {
     try {
-      const grade = await GradesService.getGradeById(req.params.id);
-      if (req.user.role === 'STUDENT') {
-        const studentProfileId = req.user.studentProfile?.id;
-        if (!studentProfileId || (grade.studentId !== studentProfileId && grade.student?.userId !== req.user.id)) {
-          throw AppError.forbidden('غير مصرح لك بالاطلاع على درجات طالب آخر');
-        }
-      }
+      // Only a grade the viewer may see (a student: their own; a teacher: their subject in their classes)
+      const grade = await GradesService.getGradeById(req.params.id, req.user);
       return ApiResponse.success(res, {
         statusCode: 200,
         message: 'Grade retrieved successfully',
@@ -111,7 +108,7 @@ export class GradesController {
           throw AppError.forbidden('غير مصرح لك بالاطلاع على شهادة درجات طالب آخر');
         }
       }
-      const report = await GradesService.getStudentReportCard(req.params.studentId);
+      const report = await GradesService.getStudentReportCard(req.params.studentId, req.user);
       return ApiResponse.success(res, {
         statusCode: 200,
         message: 'Student report card generated successfully',
@@ -126,9 +123,9 @@ export class GradesController {
     try {
       const payload = {
         ...req.body,
-        recordedById: req.user.id,
+        ...doneBy(req.user, 'recordedById', 'recordedByTeacherId'),
       };
-      const grade = await GradesService.submitGrade(payload);
+      const grade = await GradesService.submitGrade(payload, req.user);
       return ApiResponse.created(res, grade, 'Grade recorded successfully');
     } catch (error) {
       next(error);
@@ -139,9 +136,9 @@ export class GradesController {
     try {
       const payload = {
         ...req.body,
-        recordedById: req.user.id,
+        recordedBy: doneBy(req.user, 'recordedById', 'recordedByTeacherId'),
       };
-      const result = await GradesService.recordBulkMarks(payload);
+      const result = await GradesService.recordBulkMarks(payload, req.user);
       return ApiResponse.created(res, result, 'Class marks recorded successfully');
     } catch (error) {
       next(error);
@@ -150,7 +147,7 @@ export class GradesController {
 
   static async update(req, res, next) {
     try {
-      const updated = await GradesService.updateGrade(req.params.id, req.body);
+      const updated = await GradesService.updateGrade(req.params.id, req.body, req.user);
       return ApiResponse.success(res, {
         statusCode: 200,
         message: 'Grade updated successfully',

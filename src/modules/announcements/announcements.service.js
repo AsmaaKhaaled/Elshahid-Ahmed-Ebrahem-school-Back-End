@@ -1,6 +1,17 @@
+import { prisma } from '../../config/database.js';
 import { AnnouncementModel } from './announcements.model.js';
 import { AppError } from '../../shared/errors/app-error.js';
 import { broadcastAnnouncement } from '../../config/socket.js';
+import { doneBy, readerOf } from '../auth/accounts.js';
+
+// A teacher manages only the announcements they wrote
+const assertOwnAnnouncement = async (id, user, message) => {
+  if (user.role !== 'TEACHER') return;
+  const row = await prisma.announcement.findUnique({ where: { id }, select: { authorTeacherId: true } });
+  if (row?.authorTeacherId !== user.id) {
+    throw AppError.forbidden(message);
+  }
+};
 
 export class AnnouncementsService {
   /**
@@ -8,11 +19,10 @@ export class AnnouncementsService {
    */
   static async getAnnouncements(query, user) {
     const role = user?.role || 'GUEST';
-    const userId = user?.id || null;
 
     return AnnouncementModel.findAll({
       role,
-      userId,
+      reader: readerOf(user),
       category: query?.category,
       search: query?.search,
       includeExpired: query?.includeExpired === 'true' || query?.includeExpired === true,
@@ -30,8 +40,7 @@ export class AnnouncementsService {
    * Get single announcement by ID
    */
   static async getAnnouncementById(id, user) {
-    const userId = user?.id || null;
-    const announcement = await AnnouncementModel.findById(id, userId);
+    const announcement = await AnnouncementModel.findById(id, readerOf(user));
 
     if (!announcement) {
       throw AppError.notFound(`الإعلان ذو المعرف '${id}' غير موجود`);
@@ -44,8 +53,9 @@ export class AnnouncementsService {
    * Get unread announcements count for navbar bell badge
    */
   static async getUnreadCount(user) {
-    if (!user?.id) return { unreadCount: 0 };
-    const count = await AnnouncementModel.countUnread(user.id, user.role);
+    const reader = readerOf(user);
+    if (!reader) return { unreadCount: 0 };
+    const count = await AnnouncementModel.countUnread(reader, user.role);
     return { unreadCount: count };
   }
 
@@ -53,12 +63,13 @@ export class AnnouncementsService {
    * Mark a specific announcement as read
    */
   static async markAsRead(id, user) {
-    if (!user?.id) {
+    const reader = readerOf(user);
+    if (!reader) {
       throw AppError.unauthorized('يجب تسجيل الدخول لتسجيل قراءة الإعلان');
     }
 
     await this.getAnnouncementById(id, user);
-    await AnnouncementModel.markAsRead(id, user.id);
+    await AnnouncementModel.markAsRead(id, reader);
 
     return {
       success: true,
@@ -71,11 +82,12 @@ export class AnnouncementsService {
    * Mark all visible announcements as read
    */
   static async markAllAsRead(user) {
-    if (!user?.id) {
+    const reader = readerOf(user);
+    if (!reader) {
       throw AppError.unauthorized('يجب تسجيل الدخول');
     }
 
-    const markedCount = await AnnouncementModel.markAllAsRead(user.id, user.role);
+    const markedCount = await AnnouncementModel.markAllAsRead(reader, user.role);
 
     return {
       success: true,
@@ -96,7 +108,8 @@ export class AnnouncementsService {
 
     const payload = {
       ...data,
-      authorId: user?.id || null,
+      // An admin (users) or a teacher (teachers)
+      ...doneBy(user, 'authorId', 'authorTeacherId'),
       authorRole: user?.role || 'ADMIN',
       author: data.author || user?.fullName || 'إدارة المدرسة',
     };
@@ -123,8 +136,9 @@ export class AnnouncementsService {
     };
 
     // Auto mark as read for author
-    if (user?.id) {
-      await AnnouncementModel.markAsRead(created.id, user.id).catch(() => {});
+    const reader = readerOf(user);
+    if (reader) {
+      await AnnouncementModel.markAsRead(created.id, reader).catch(() => {});
     }
 
     // Real-time broadcast to all targeted users via Socket.io
@@ -147,12 +161,10 @@ export class AnnouncementsService {
     }
 
     // Teacher can only edit their own announcement
-    if (user.role === 'TEACHER' && existing.authorId !== user.id) {
-      throw AppError.forbidden('يمكنك تعديل إعلاناتك الخاصة فقط');
-    }
+    await assertOwnAnnouncement(id, user, 'يمكنك تعديل إعلاناتك الخاصة فقط');
 
     const updated = await AnnouncementModel.update(id, data);
-    return AnnouncementModel.findById(updated.id, user.id);
+    return AnnouncementModel.findById(updated.id, readerOf(user));
   }
 
   /**
@@ -165,7 +177,7 @@ export class AnnouncementsService {
     }
 
     await AnnouncementModel.togglePinned(id);
-    return AnnouncementModel.findById(id, user.id);
+    return AnnouncementModel.findById(id, readerOf(user));
   }
 
   /**
@@ -177,9 +189,7 @@ export class AnnouncementsService {
       throw AppError.notFound(`الإعلان ذو المعرف '${id}' غير موجود`);
     }
 
-    if (user.role === 'TEACHER' && existing.authorId !== user.id) {
-      throw AppError.forbidden('يمكنك حذف إعلاناتك الخاصة فقط');
-    }
+    await assertOwnAnnouncement(id, user, 'يمكنك حذف إعلاناتك الخاصة فقط');
 
     await AnnouncementModel.delete(id);
     return true;

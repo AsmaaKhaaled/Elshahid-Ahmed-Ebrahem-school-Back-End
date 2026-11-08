@@ -1,5 +1,18 @@
+import { prisma } from '../../config/database.js';
 import { SubjectModel } from './subjects.model.js';
 import { AppError } from '../../shared/errors/app-error.js';
+
+// One row per subject name (the school's list)
+const assertNameFree = async (nameArabic, id = null) => {
+  if (nameArabic === undefined) return;
+  const taken = await prisma.subject.findFirst({
+    where: { nameArabic: nameArabic.trim(), ...(id && { id: { not: id } }) },
+    select: { id: true },
+  });
+  if (taken) {
+    throw AppError.conflict(`المادة '${nameArabic.trim()}' مسجلة بالفعل`);
+  }
+};
 
 export class SubjectsService {
   static async getSubjects(query) {
@@ -19,7 +32,8 @@ export class SubjectsService {
     if (existing) {
       throw AppError.conflict(`Subject with code '${data.code}' already exists`);
     }
-    return SubjectModel.create(data);
+    await assertNameFree(data.nameArabic);
+    return SubjectModel.create({ ...data, nameArabic: data.nameArabic.trim() });
   }
 
   static async updateSubject(id, data) {
@@ -29,7 +43,11 @@ export class SubjectsService {
         throw AppError.conflict(`Subject with code '${data.code}' already exists`);
       }
     }
-    const updated = await SubjectModel.update(id, data);
+    await assertNameFree(data.nameArabic, id);
+    const updated = await SubjectModel.update(id, {
+      ...data,
+      ...(data.nameArabic !== undefined && { nameArabic: data.nameArabic.trim() }),
+    });
     if (!updated) {
       throw AppError.notFound(`Subject with id '${id}' not found`);
     }

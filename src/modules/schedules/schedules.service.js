@@ -9,6 +9,7 @@ import {
   formatSlotKey,
 } from './schedules.constants.js';
 import { AppError } from '../../shared/errors/app-error.js';
+import { assignmentsOf } from '../teachers/teachers.service.js';
 
 export class SchedulesService {
   /**
@@ -18,7 +19,9 @@ export class SchedulesService {
     if (!Array.isArray(rawSlots)) return [];
 
     // Preload all classes for fast lookup by id or name
+    // Only this year's (active) classes can be scheduled
     const allClasses = await prisma.class.findMany({
+      where: { isActive: true },
       select: { id: true, name: true, gradeLevel: true },
     });
     const classById = new Map(allClasses.map((c) => [c.id, c]));
@@ -38,8 +41,9 @@ export class SchedulesService {
         }
       }
 
-      if (day === undefined || isNaN(day) || period === undefined || isNaN(period)) {
-        continue;
+      // Never drop a period silently (the request validation already rejects these)
+      if (!Number.isInteger(day) || day < 0 || day > 4 || !Number.isInteger(period) || period < 1 || period > 7) {
+        throw AppError.badRequest('يوجد حصة بيوم أو رقم حصة غير صحيح في الجدول');
       }
 
       // Resolve class
@@ -54,7 +58,7 @@ export class SchedulesService {
 
       if (!matchedClass) {
         throw AppError.badRequest(
-          `الفصل الدراسي '${item.className || item.classId || item.section}' غير موجود في النظام`
+          `الفصل الدراسي '${item.className || item.classId || item.section}' غير موجود أو غير مفعّل هذا العام`
         );
       }
 
@@ -85,7 +89,15 @@ export class SchedulesService {
     // 1. Check teacher exists
     const teacher = await prisma.teacher.findUnique({
       where: { id: teacherId },
-      select: { id: true, fullNameArabic: true, teacherCode: true },
+      select: {
+        id: true,
+        fullNameArabic: true,
+        teacherCode: true,
+        isActive: true,
+        teachingSubjects: true,
+        teachingAssignments: true,
+        classes: { select: { name: true } },
+      },
     });
 
     if (!teacher) {
@@ -94,6 +106,30 @@ export class SchedulesService {
 
     // 2. Resolve & normalize slots
     const requestedSlots = await this.resolveSlotsInput(payload.slots);
+
+    // A teacher who left the school gets no periods
+    if (!teacher.isActive && requestedSlots.length) {
+      throw AppError.badRequest('المعلم موقوف (ترك المدرسة)، لا يمكن إسناد حصص له');
+    }
+
+    // 2b. Each period must be a subject the teacher teaches to that class (as assigned on the teachers page)
+    const taught = new Set(
+      assignmentsOf(teacher, teacher.classes.map((c) => c.name)).flatMap((a) =>
+        a.classes.map((cls) => `${a.subject.trim()}|${cls}`)
+      )
+    );
+    const notTaught = [
+      ...new Set(
+        requestedSlots
+          .filter((slot) => !taught.has(`${slot.subject}|${slot.className}`))
+          .map((slot) => `${slot.subject} لفصل ${slot.className}`)
+      ),
+    ];
+    if (notTaught.length) {
+      throw AppError.badRequest(
+        `المعلم مش مُسند له: ${notTaught.join('، ')}. أضف المادة والفصل للمعلم من صفحة المعلمين الأول`
+      );
+    }
 
     // 3. Level 1 Conflict: Teacher cannot teach 2 classes at the same day & period
     const teacherSlotOccupied = new Map();
@@ -277,18 +313,17 @@ export class SchedulesService {
 
     const scheduleData = await this.getTeacherSchedule(teacherId, termId);
 
-    // Calculate today's periods count
-    const jsDay = new Date().getDay(); // 0 = Sunday, 1 = Monday ... 4 = Thursday
-    let todayPeriodsCount = 0;
-    if (jsDay >= 0 && jsDay <= 4) {
-      todayPeriodsCount = Object.values(scheduleData.schedule).filter(
-        (s) => s.day === jsDay
-      ).length;
-    }
+    // Today's periods, by the school's clock (Egypt), whatever the server's time zone is.
+    // 0 = Sunday ... 4 = Thursday; Friday & Saturday have none.
+    const weekday = new Intl.DateTimeFormat('en-US', { timeZone: 'Africa/Cairo', weekday: 'short' }).format(new Date());
+    const schoolDay = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu'].indexOf(weekday);
+    const slots = Object.values(scheduleData.schedule);
+    const todayPeriodsCount = schoolDay === -1 ? 0 : slots.filter((s) => s.day === schoolDay).length;
 
     return {
       ...scheduleData,
       todayPeriodsCount,
+      classesCount: new Set(slots.map((s) => s.classId)).size,
     };
   }
 

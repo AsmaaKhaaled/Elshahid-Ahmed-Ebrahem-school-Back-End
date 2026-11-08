@@ -2,13 +2,16 @@ import { Router } from 'express';
 import { SchedulesController } from './schedules.controller.js';
 import { schedulesValidation } from './schedules.validation.js';
 import { validate } from '../../middlewares/validate.middleware.js';
-import { authenticate } from '../../middlewares/auth.middleware.js';
+import { authenticate, checkPermission } from '../../middlewares/auth.middleware.js';
 import { authorize } from '../../middlewares/role.middleware.js';
 
 const router = Router();
 
 // All schedule routes require authentication
 router.use(authenticate);
+
+// The timetable is built from the teachers' schedules, so it shares the teachers section's permission
+const manageTeachers = checkPermission('teachers');
 
 // Specific Named Routes (Mounted before param routes)
 
@@ -21,6 +24,7 @@ router.get(
   authorize('ADMIN', 'SUPER_ADMIN'),
   SchedulesController.getSchoolSchedule
 );
+// (read by other admin pages too, e.g. teachers' weekly load on the dashboard)
 
 /**
  * GET /api/v1/schedules/my-schedule?termId=...
@@ -50,7 +54,7 @@ router.get(
  */
 router.put(
   '/teachers/:teacherId',
-  authorize('ADMIN', 'SUPER_ADMIN'),
+  manageTeachers,
   validate(schedulesValidation.saveTeacherSchedule),
   SchedulesController.saveTeacherSchedule
 );
@@ -81,7 +85,7 @@ router.get(
 // Convenient alias routes for direct :teacherId access
 router.put(
   '/:teacherId',
-  authorize('ADMIN', 'SUPER_ADMIN'),
+  manageTeachers,
   validate(schedulesValidation.saveTeacherSchedule),
   SchedulesController.saveTeacherSchedule
 );

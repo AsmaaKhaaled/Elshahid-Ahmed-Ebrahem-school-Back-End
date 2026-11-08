@@ -114,10 +114,17 @@ export class TeacherAttendanceService {
     const ids = records.map((record) => record.teacherId);
     const teachers = await prisma.teacher.findMany({
       where: { id: { in: ids } },
-      select: { id: true, fullNameArabic: true, specialization: true },
+      select: { id: true, fullNameArabic: true, specialization: true, isActive: true },
     });
     if (teachers.length !== ids.length) {
       throw AppError.badRequest('يوجد معلم غير مسجل في النظام ضمن البيانات المرسلة');
+    }
+    // A teacher who left the school is no longer in the book (reload the day's sheet)
+    const stopped = teachers.filter((teacher) => !teacher.isActive);
+    if (stopped.length) {
+      throw AppError.badRequest(
+        `المعلم ${stopped.map((t) => t.fullNameArabic).join('، ')} موقوف ولا يُسجَّل له حضور. حدّث الصفحة`
+      );
     }
     const teachersById = new Map(teachers.map((teacher) => [teacher.id, teacher]));
 

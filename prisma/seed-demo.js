@@ -7,7 +7,8 @@
  * Every demo record is tagged so it can be removed without touching real data:
  *   students  -> studentCode starts with "DEMO-"
  *   teachers  -> teacherCode starts with "TCH-D"
- * Their login accounts (users) are removed with them. Demo passwords: Student@2026 / Teacher@2026.
+ * Their login accounts are on the same rows, so they go with them. Sign-in: a student's national ID + student
+ * code the first time; a teacher's national ID + Teacher@2026.
  */
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
@@ -53,26 +54,16 @@ const pad = (n, size) => String(n).padStart(size, '0');
 const pick = (list, i) => list[i % list.length];
 
 async function clean() {
-  const demoStudents = await prisma.student.findMany({
-    where: { studentCode: { startsWith: STUDENT_CODE_PREFIX } },
-    select: { userId: true },
-  });
-  const demoTeachers = await prisma.teacher.findMany({
-    where: { teacherCode: { startsWith: TEACHER_CODE_PREFIX } },
-    select: { userId: true },
-  });
-  const userIds = [...demoStudents, ...demoTeachers].map((r) => r.userId).filter(Boolean);
-
+  // Their sign-in accounts are on the same rows, so they go with them.
   // Deleting a teacher clears them as class advisor (onDelete: SetNull) and from class assignments
-  const [students, teachers, users] = await prisma.$transaction([
+  const [students, teachers] = await prisma.$transaction([
     prisma.student.deleteMany({ where: { studentCode: { startsWith: STUDENT_CODE_PREFIX } } }),
     prisma.teacher.deleteMany({ where: { teacherCode: { startsWith: TEACHER_CODE_PREFIX } } }),
-    prisma.user.deleteMany({ where: { id: { in: userIds } } }),
   ]);
-  console.log(`🧹 Removed demo data: ${students.count} students, ${teachers.count} teachers, ${users.count} accounts`);
+  console.log(`🧹 Removed demo data: ${students.count} students, ${teachers.count} teachers (with their accounts)`);
 }
 
-async function seedStudents(classesByName, passwordHash) {
+async function seedStudents(classesByName) {
   const students = [];
   let seq = 0;
 
@@ -116,29 +107,13 @@ async function seedStudents(classesByName, passwordHash) {
     }
   }
 
-  // Accounts first (bulk), then the student profiles linked to them
-  await prisma.user.createMany({
+  // Each student with their sign-in account on the same row: no password yet, the first sign-in is
+  // national ID + student code
+  await prisma.student.createMany({
     data: students.map((s) => ({
-      fullName: s.fullName,
-      name: s.fullName,
-      nationalId: s.nationalId,
-      studentCode: s.studentCode,
-      password: passwordHash,
       role: 'STUDENT',
       status: s.isActive ? 'ACTIVE' : 'INACTIVE',
       forcePasswordChange: true,
-      phone: s.guardianPhone,
-    })),
-  });
-  const users = await prisma.user.findMany({
-    where: { studentCode: { startsWith: STUDENT_CODE_PREFIX } },
-    select: { id: true, studentCode: true },
-  });
-  const userIdByCode = new Map(users.map((u) => [u.studentCode, u.id]));
-
-  await prisma.student.createMany({
-    data: students.map((s) => ({
-      userId: userIdByCode.get(s.studentCode),
       studentCode: s.studentCode,
       fullNameArabic: s.fullName,
       nationalId: s.nationalId,
@@ -164,33 +139,22 @@ async function seedTeachers(classesByName, passwordHash) {
     const email = `demo.teacher${pad(n, 2)}@school.com`;
     const classIds = t.classes.map((name) => classesByName.get(name)).filter(Boolean).map((c) => ({ id: c.id }));
 
-    const teacher = await prisma.$transaction(async (tx) => {
-      const user = await tx.user.create({
-        data: {
-          fullName: t.name,
-          name: t.name,
-          nationalId,
-          email,
-          phone,
-          password: passwordHash,
-          role: 'TEACHER',
-          forcePasswordChange: true,
-        },
-      });
-      return tx.teacher.create({
-        data: {
-          userId: user.id,
-          teacherCode: `${TEACHER_CODE_PREFIX}${pad(n, 2)}`,
-          fullNameArabic: t.name,
-          nationalId,
-          email,
-          phone,
-          specialization: t.specialization,
-          teachingSubjects: t.subjects,
-          employmentStatus: t.status ?? 'ON_DUTY',
-          classes: { connect: classIds },
-        },
-      });
+    // The teacher with their sign-in account on the same row
+    const teacher = await prisma.teacher.create({
+      data: {
+        teacherCode: `${TEACHER_CODE_PREFIX}${pad(n, 2)}`,
+        password: passwordHash,
+        role: 'TEACHER',
+        forcePasswordChange: true,
+        fullNameArabic: t.name,
+        nationalId,
+        email,
+        phone,
+        specialization: t.specialization,
+        teachingSubjects: t.subjects,
+        employmentStatus: t.status ?? 'ON_DUTY',
+        classes: { connect: classIds },
+      },
     });
 
     // Class advisor only where the class has none yet, so real assignments are never overwritten
@@ -211,12 +175,9 @@ async function main() {
   const classes = await prisma.class.findMany({ select: { id: true, name: true, gradeLevel: true } });
   const classesByName = new Map(classes.map((c) => [c.name, c]));
 
-  const [studentHash, teacherHash] = await Promise.all([
-    bcrypt.hash('Student@2026', 10),
-    bcrypt.hash('Teacher@2026', 10),
-  ]);
+  const teacherHash = await bcrypt.hash('Teacher@2026', 10);
 
-  await seedStudents(classesByName, studentHash);
+  await seedStudents(classesByName);
   await seedTeachers(classesByName, teacherHash);
 
   const summary = await prisma.class.findMany({

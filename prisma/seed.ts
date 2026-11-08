@@ -67,18 +67,17 @@ async function main() {
   // ==========================================
   // 2. Seed Subjects (مادة الرياضيات)
   // ==========================================
+  // The school's subjects (src/shared/constants/school-subjects.js) come with migration 20261106120000_school_subjects
   const mathSubject = await prisma.subject.upsert({
-    where: { code: 'MTH-PREP3' },
+    where: { nameArabic: 'الرياضيات' },
     update: {
-      nameArabic: 'رياضيات',
       nameEnglish: 'Mathematics',
-      gradeLevel: 'الصف الثالث الإعدادي',
     },
     create: {
-      code: 'MTH-PREP3',
-      nameArabic: 'رياضيات',
+      code: 'MATH',
+      nameArabic: 'الرياضيات',
       nameEnglish: 'Mathematics',
-      gradeLevel: 'الصف الثالث الإعدادي',
+      gradeLevel: 'جميع الصفوف',
       maxMarks: 100,
       passMarks: 50,
       isActive: true,
@@ -215,7 +214,7 @@ async function main() {
       nationalId: teacherNationalId,
       fullNameArabic: 'نشوه يوسف محمد يوسف',
       fullNameEnglish: 'Neshwa Youssef Mohamed Youssef',
-      specialization: 'رياضيات',
+      specialization: 'الرياضيات',
       email: teacherEmail,
       phone: '01012345678',
       isActive: true,
@@ -236,7 +235,7 @@ async function main() {
       nationalId: teacherNationalId,
       fullNameArabic: 'نشوه يوسف محمد يوسف',
       fullNameEnglish: 'Neshwa Youssef Mohamed Youssef',
-      specialization: 'رياضيات',
+      specialization: 'الرياضيات',
       email: teacherEmail,
       phone: '01012345678',
       isActive: true,

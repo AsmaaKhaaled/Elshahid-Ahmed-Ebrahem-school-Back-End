@@ -10,7 +10,6 @@ async function main() {
   const adminPasswordHash = await bcrypt.hash('Admin@2026', SALT_ROUNDS);
   const staffPasswordHash = await bcrypt.hash('Staff@2026', SALT_ROUNDS);
   const teacherPasswordHash = await bcrypt.hash('Teacher@2026', SALT_ROUNDS);
-  const studentPasswordHash = await bcrypt.hash('Student@2026', SALT_ROUNDS);
 
   // Clean up legacy non-standard test class if exists
   await prisma.class.deleteMany({
@@ -67,18 +66,17 @@ async function main() {
   // ==========================================
   // 2. Seed Subjects (مادة الرياضيات)
   // ==========================================
+  // The school's subjects (src/shared/constants/school-subjects.js) come with migration 20261106120000_school_subjects
   const mathSubject = await prisma.subject.upsert({
-    where: { code: 'MTH-PREP3' },
+    where: { nameArabic: 'الرياضيات' },
     update: {
-      nameArabic: 'رياضيات',
       nameEnglish: 'Mathematics',
-      gradeLevel: 'الصف الثالث الإعدادي',
     },
     create: {
-      code: 'MTH-PREP3',
-      nameArabic: 'رياضيات',
+      code: 'MATH',
+      nameArabic: 'الرياضيات',
       nameEnglish: 'Mathematics',
-      gradeLevel: 'الصف الثالث الإعدادي',
+      gradeLevel: 'جميع الصفوف',
       maxMarks: 100,
       passMarks: 50,
       isActive: true,
@@ -169,41 +167,17 @@ async function main() {
   // ==========================================
   // 6. Seed Teacher: أ/ نشوه يوسف محمد يوسف
   // ==========================================
+  // The teacher's sign-in account is on their own row (teachers): password set once, on create
   const teacherNationalId = '28901222800962';
   const teacherEmail = 'teacher.neshwa@school.com';
-
-  const teacherUser = await prisma.user.upsert({
-    where: { email: teacherEmail },
-    update: {
-      fullName: 'نشوه يوسف محمد يوسف',
-      name: 'نشوه يوسف محمد يوسف',
-      nationalId: teacherNationalId,
-      role: 'TEACHER',
-      status: 'ACTIVE',
-      permissions: [],
-    },
-    create: {
-      fullName: 'نشوه يوسف محمد يوسف',
-      name: 'نشوه يوسف محمد يوسف',
-      email: teacherEmail,
-      nationalId: teacherNationalId,
-      password: teacherPasswordHash,
-      role: 'TEACHER',
-      status: 'ACTIVE',
-      phone: '01012345678',
-      forcePasswordChange: true,
-      permissions: [],
-    },
-  });
 
   const teacherProfile = await prisma.teacher.upsert({
     where: { teacherCode: 'TCH-001' },
     update: {
-      userId: teacherUser.id,
       nationalId: teacherNationalId,
       fullNameArabic: 'نشوه يوسف محمد يوسف',
       fullNameEnglish: 'Neshwa Youssef Mohamed Youssef',
-      specialization: 'رياضيات',
+      specialization: 'الرياضيات',
       email: teacherEmail,
       phone: '01012345678',
       isActive: true,
@@ -219,12 +193,15 @@ async function main() {
       },
     },
     create: {
-      userId: teacherUser.id,
       teacherCode: 'TCH-001',
+      password: teacherPasswordHash,
+      role: 'TEACHER',
+      status: 'ACTIVE',
+      forcePasswordChange: true,
       nationalId: teacherNationalId,
       fullNameArabic: 'نشوه يوسف محمد يوسف',
       fullNameEnglish: 'Neshwa Youssef Mohamed Youssef',
-      specialization: 'رياضيات',
+      specialization: 'الرياضيات',
       email: teacherEmail,
       phone: '01012345678',
       isActive: true,
@@ -244,45 +221,19 @@ async function main() {
       subjects: true,
     },
   });
-  console.log(`✅ Teacher Account (أ/ نشوه): NationalID = ${teacherUser.nationalId}`);
+  console.log(`✅ Teacher Account (أ/ نشوه): NationalID = ${teacherProfile.nationalId}`);
   console.log(`   📚 فصول المعلمة نشوه (${teacherProfile.classes.length} فصول): ${teacherProfile.classes.map((c) => c.displayNameArabic).join(' ، ')}`);
 
   // ==========================================
   // 7. Seed Student (طالب مقيد بفصل 3/2)
   // ==========================================
+  // The student's sign-in account is on their own row (students): the first sign-in is
+  // national ID + student code, then they choose their own password
   const studentCode = 'STU-2026-001';
-  const studentEmail = 'student.omar@school.com';
 
-  const studentUser = await prisma.user.upsert({
-    where: { email: studentEmail },
-    update: {
-      fullName: 'عمر طارق حسن',
-      name: 'عمر طارق حسن',
-      studentCode,
-      nationalId: '30805121234567',
-      role: 'STUDENT',
-      status: 'ACTIVE',
-      permissions: [],
-    },
-    create: {
-      fullName: 'عمر طارق حسن',
-      name: 'عمر طارق حسن',
-      email: studentEmail,
-      studentCode,
-      nationalId: '30805121234567',
-      password: studentPasswordHash,
-      role: 'STUDENT',
-      status: 'ACTIVE',
-      phone: '01234567890',
-      forcePasswordChange: true,
-      permissions: [],
-    },
-  });
-
-  await prisma.student.upsert({
+  const seededStudent = await prisma.student.upsert({
     where: { studentCode },
     update: {
-      userId: studentUser.id,
       classId: seededClasses['3/2'].id,
       gradeLevel: 'الصف الثالث الإعدادي',
       fullNameArabic: 'عمر طارق حسن',
@@ -293,8 +244,10 @@ async function main() {
       isActive: true,
     },
     create: {
-      userId: studentUser.id,
       studentCode,
+      role: 'STUDENT',
+      status: 'ACTIVE',
+      forcePasswordChange: true,
       classId: seededClasses['3/2'].id,
       gradeLevel: 'الصف الثالث الإعدادي',
       fullNameArabic: 'عمر طارق حسن',
@@ -305,7 +258,7 @@ async function main() {
       isActive: true,
     },
   });
-  console.log(`✅ Student Account (عمر طارق): StudentCode = ${studentUser.studentCode} | Class = ${seededClasses['3/2'].displayNameArabic}`);
+  console.log(`✅ Student Account (عمر طارق): StudentCode = ${seededStudent.studentCode} | Class = ${seededClasses['3/2'].displayNameArabic}`);
 
   // ==========================================
   // 8. Seed Timetable Schedules (جداول الحصص الأسبوعية ومنع التعارضات)

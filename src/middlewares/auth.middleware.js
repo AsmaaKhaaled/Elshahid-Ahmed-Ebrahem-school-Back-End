@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env.js';
-import { prisma } from '../config/database.js';
 import { AppError } from '../shared/errors/app-error.js';
+import { findAccount, toSessionUser } from '../modules/auth/accounts.js';
 
 /**
  * Extracts Bearer token from Authorization header.
@@ -25,8 +25,8 @@ const extractBearerToken = (req) => {
 
 /**
  * Standard Token Verification Middleware
- * Validates full standard JWT, fetches fresh user from DB, and attaches req.user to request.
- * Blocks restricted temporary tokens from accessing regular protected routes.
+ * Validates full standard JWT, fetches the fresh account (from users / teachers / students, by the
+ * token's role) and attaches it to req.user. Blocks restricted temporary tokens from regular routes.
  */
 export const verifyToken = async (req, res, next) => {
   try {
@@ -39,41 +39,17 @@ export const verifyToken = async (req, res, next) => {
       );
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.id },
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        nationalId: true,
-        studentCode: true,
-        role: true,
-        status: true,
-        permissions: true,
-        forcePasswordChange: true,
-        studentProfile: {
-          select: {
-            id: true,
-            classId: true,
-          },
-        },
-        teacherProfile: {
-          select: {
-            id: true,
-          },
-        },
-      },
-    });
+    const account = await findAccount(decoded.role, decoded.id);
 
-    if (!user) {
+    if (!account) {
       return next(AppError.unauthorized('الحساب غير موجود'));
     }
 
-    if (user.status !== 'ACTIVE') {
+    if (account.status !== 'ACTIVE') {
       return next(AppError.forbidden('تم تجميد أو تعطيل هذا الحساب. يرجى التواصل مع إدارة النظام.'));
     }
 
-    req.user = user;
+    req.user = toSessionUser(account);
     next();
   } catch (error) {
     if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
@@ -172,19 +148,17 @@ export const verifyTempToken = async (req, res, next) => {
       );
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.id },
-    });
+    const account = await findAccount(decoded.role, decoded.id);
 
-    if (!user) {
+    if (!account) {
       return next(AppError.unauthorized('الحساب غير موجود'));
     }
 
-    if (user.status !== 'ACTIVE') {
+    if (account.status !== 'ACTIVE') {
       return next(AppError.forbidden('تم تجميد أو تعطيل هذا الحساب'));
     }
 
-    req.user = user;
+    req.user = toSessionUser(account);
     next();
   } catch (error) {
     if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {

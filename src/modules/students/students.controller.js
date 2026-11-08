@@ -2,22 +2,28 @@ import { StudentsService } from './students.service.js';
 import { ApiResponse } from '../../shared/utils/api-response.js';
 import { AppError } from '../../shared/errors/app-error.js';
 
+const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+const sendExcel = (res, buffer, fileName) => {
+  res.setHeader('Content-Type', XLSX_TYPE);
+  res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+  return res.send(buffer);
+};
+
 export class StudentsController {
   static async getAll(req, res, next) {
     try {
-      const result = await StudentsService.getStudents(req.query);
-      const isPaginated = result && result.students !== undefined;
-      const data = isPaginated ? result.students : result;
-      const total = isPaginated ? result.total : (Array.isArray(data) ? data.length : 0);
+      const { students, total } = await StudentsService.getStudents(req.query, req.user);
 
-      const page = req.query.page ? Math.max(1, parseInt(req.query.page, 10) || 1) : 1;
-      const limit = req.query.limit ? Math.min(Math.max(1, parseInt(req.query.limit, 10) || 20), 100) : total;
-      const totalPages = req.query.limit ? Math.ceil(total / limit) || 1 : 1;
+      const paginated = req.query.page !== undefined || req.query.limit !== undefined;
+      const page = paginated ? Math.max(1, parseInt(req.query.page, 10) || 1) : 1;
+      const limit = paginated ? Math.min(Math.max(1, parseInt(req.query.limit, 10) || 20), 100) : total;
+      const totalPages = paginated ? Math.ceil(total / limit) || 1 : 1;
 
       return ApiResponse.success(res, {
         statusCode: 200,
         message: 'تم جلب بيانات الطلاب بنجاح',
-        data,
+        data: students,
         meta: {
           total,
           page,
@@ -47,17 +53,29 @@ export class StudentsController {
 
   static async getById(req, res, next) {
     try {
-      const student = await StudentsService.getStudentById(req.params.id);
-      if (req.user.role === 'STUDENT') {
-        const studentProfileId = req.user.studentProfile?.id;
-        if (!studentProfileId || (studentProfileId !== req.params.id && student.userId !== req.user.id)) {
-          throw AppError.forbidden('غير مصرح لك بالاطلاع على بيانات طالب آخر');
-        }
-      }
+      const student = await StudentsService.getStudentById(req.params.id, req.user);
       return ApiResponse.success(res, {
         statusCode: 200,
         message: 'تم استرجاع بيانات الطالب بنجاح',
         data: student,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /** GET /students/me/teachers (the signed-in student) and GET /students/:id/teachers */
+  static async getTeachers(req, res, next) {
+    try {
+      const studentId = req.params.id ?? req.user.studentProfile?.id;
+      if (!studentId) {
+        throw AppError.forbidden('هذا الحساب غير مرتبط بملف طالب');
+      }
+      const result = await StudentsService.getStudentTeachers(studentId, req.user);
+      return ApiResponse.success(res, {
+        statusCode: 200,
+        message: 'تم جلب مدرسي الطالب بنجاح',
+        data: result,
       });
     } catch (error) {
       next(error);
@@ -88,12 +106,26 @@ export class StudentsController {
 
   static async enroll(req, res, next) {
     try {
-      const { classId } = req.body;
-      const updated = await StudentsService.enrollStudent(req.params.id, classId);
+      const { classId, className } = req.body;
+      const updated = await StudentsService.enrollStudent(req.params.id, classId || className);
       return ApiResponse.success(res, {
         statusCode: 200,
         message: 'تم تسكين الطالب في الفصل بنجاح',
         data: updated,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /** POST /students/distribute { gradeLevel? } */
+  static async distribute(req, res, next) {
+    try {
+      const result = await StudentsService.distributeStudents(req.body || {});
+      return ApiResponse.success(res, {
+        statusCode: 200,
+        message: `تم توزيع ${result.placedCount} طالب على الفصول`,
+        data: result,
       });
     } catch (error) {
       next(error);
@@ -124,16 +156,17 @@ export class StudentsController {
 
   static async downloadTemplate(req, res, next) {
     try {
-      const buffer = StudentsService.generateExcelTemplate();
-      res.setHeader(
-        'Content-Type',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-      );
-      res.setHeader(
-        'Content-Disposition',
-        'attachment; filename="students_template.xlsx"'
-      );
-      return res.send(buffer);
+      return sendExcel(res, StudentsService.generateExcelTemplate(), 'students_template.xlsx');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /** GET /students/export?classId&gradeLevel&enrollmentStatus&search&withoutClass */
+  static async exportExcel(req, res, next) {
+    try {
+      const buffer = await StudentsService.exportStudentsExcel(req.query);
+      return sendExcel(res, buffer, 'students.xlsx');
     } catch (error) {
       next(error);
     }
@@ -141,13 +174,7 @@ export class StudentsController {
 
   static async generateCard(req, res, next) {
     try {
-      if (req.user.role === 'STUDENT') {
-        const studentProfileId = req.user.studentProfile?.id;
-        if (!studentProfileId || studentProfileId !== req.params.id) {
-          throw AppError.forbidden('غير مصرح لك بإصدار بطاقة طالب آخر');
-        }
-      }
-      const cardData = await StudentsService.generateStudentCard(req.params.id);
+      const cardData = await StudentsService.generateStudentCard(req.params.id, req.user);
       return ApiResponse.success(res, {
         statusCode: 200,
         message: 'تم إصدار بطاقة تعريف الطالب بنجاح',

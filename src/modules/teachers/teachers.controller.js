@@ -44,7 +44,7 @@ export class TeachersController {
    */
   static async getAll(req, res, next) {
     try {
-      const teachers = await TeachersService.getTeachers(req.user.role);
+      const teachers = await TeachersService.getTeachers(req.user);
       return res.status(200).json({ status: 'success', results: teachers.length, data: { teachers } });
     } catch (error) {
       next(error);
@@ -104,8 +104,41 @@ export class TeachersController {
    */
   static async remove(req, res, next) {
     try {
-      await TeachersService.deleteTeacher(req.params.id);
-      return res.status(200).json({ status: 'success', message: 'تم حذف المعلم' });
+      const { removedPeriods } = await TeachersService.deleteTeacher(req.params.id);
+      const message = removedPeriods ? `تم حذف المعلم و${removedPeriods} حصة من الجدول` : 'تم حذف المعلم';
+      return res.status(200).json({ status: 'success', message, data: { removedPeriods } });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * PATCH /api/v1/teachers/:id/deactivate (left the school)
+   */
+  static async deactivate(req, res, next) {
+    try {
+      const { teacher, removedPeriods, removedAdvisedClasses } = await TeachersService.deactivateTeacher(req.params.id);
+      return res.status(200).json({
+        status: 'success',
+        message: `تم إيقاف المعلم${removedPeriods ? ` وشيل ${removedPeriods} حصة من الجدول` : ''}`,
+        data: { teacher, removedPeriods, removedAdvisedClasses },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * PATCH /api/v1/teachers/:id/activate
+   */
+  static async activate(req, res, next) {
+    try {
+      const teacher = await TeachersService.activateTeacher(req.params.id);
+      return res.status(200).json({
+        status: 'success',
+        message: 'تم تفعيل المعلم. حدد مواده وفصوله من جديد',
+        data: { teacher },
+      });
     } catch (error) {
       next(error);
     }

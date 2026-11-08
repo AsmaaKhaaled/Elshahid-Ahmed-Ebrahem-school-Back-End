@@ -3,8 +3,14 @@ import { prisma } from '../../config/database.js';
 import { AppError } from '../../shared/errors/app-error.js';
 import { compareArabic } from '../../shared/utils/arabic.js';
 import { parsePagination, buildPaginationMeta } from '../../shared/utils/pagination.js';
+import { assertIdentityFree } from '../auth/accounts.js';
+import { normalizeNationalId, normalizePhone } from '../../shared/utils/egyptian-ids.js';
 
 const SALT_ROUNDS = 10;
+
+/** Who sees teachers' national IDs, phones & accounts: SUPER_ADMIN, or an ADMIN with the 'teachers' section */
+export const canManageTeachers = (user) =>
+  user?.role === 'SUPER_ADMIN' || (user?.role === 'ADMIN' && Array.isArray(user.permissions) && user.permissions.includes('teachers'));
 
 // The school's classes: grade number -> sections (matches the frontend's GRADE_LEVELS)
 export const GRADES = [
@@ -24,7 +30,6 @@ export const STANDARD_CLASSES = GRADES.flatMap((grade) =>
 
 const TEACHER_INCLUDE = {
   classes: { select: { name: true } },
-  user: { select: { id: true, status: true, forcePasswordChange: true } },
 };
 
 /**
@@ -50,10 +55,10 @@ const toDto = (teacher) => ({
   classes: teacher.classes.map((cls) => cls.name).sort(),
   assignments: assignmentsOf(teacher, teacher.classes.map((cls) => cls.name)),
   status: teacher.employmentStatus,
-  // Sign-in account for the teachers portal
-  account: teacher.user
-    ? { status: teacher.user.status, mustChangePassword: teacher.user.forcePasswordChange }
-    : null,
+  // false = left the school: can't sign in, has no classes, kept for the records
+  active: teacher.isActive,
+  // Sign-in account for the teachers portal (on the teacher's own row)
+  account: { status: teacher.status, mustChangePassword: teacher.forcePasswordChange },
 });
 
 // What other teachers may see about a colleague (no national ID / phone)
@@ -65,6 +70,7 @@ const toPublicDto = (teacher) => ({
   classes: teacher.classes.map((cls) => cls.name).sort(),
   assignments: assignmentsOf(teacher, teacher.classes.map((cls) => cls.name)),
   status: teacher.employmentStatus,
+  active: teacher.isActive,
 });
 
 const clean = (value) => (typeof value === 'string' && value.trim() ? value.trim() : null);
@@ -121,11 +127,14 @@ const toRosterDto = (student) => ({
 });
 
 export class TeachersService {
-  /** All teachers, A→Z. Teachers get a reduced view of their colleagues. */
-  static async getTeachers(viewerRole) {
+  /**
+   * All teachers, A→Z. Only whoever manages teachers gets national IDs, phones & accounts;
+   * teachers and other admins get the reduced view.
+   */
+  static async getTeachers(viewer) {
     const teachers = await prisma.teacher.findMany({ include: TEACHER_INCLUDE });
     teachers.sort((a, b) => compareArabic(a.fullNameArabic, b.fullNameArabic));
-    return teachers.map(viewerRole === 'TEACHER' ? toPublicDto : toDto);
+    return teachers.map(canManageTeachers(viewer) ? toDto : toPublicDto);
   }
 
   static async getTeacherById(id) {
@@ -136,7 +145,7 @@ export class TeachersService {
     return toDto(teacher);
   }
 
-  /** Creates the teacher together with their portal account (first sign-in asks for a new password). */
+  /** Creates the teacher with their portal account on the same row (first sign-in asks for a new password). */
   static async createTeacher(body) {
     const data = this.teacherData(body);
     await this.assertUnique({ nationalId: data.nationalId, email: data.email });
@@ -144,72 +153,179 @@ export class TeachersService {
     const passwordHash = await bcrypt.hash(body.password, SALT_ROUNDS);
     const teacherCode = await this.nextTeacherCode();
 
-    const teacher = await prisma.$transaction(async (tx) => {
-      const user = await tx.user.create({
-        data: {
-          fullName: data.fullNameArabic,
-          nationalId: data.nationalId,
-          email: data.email,
-          phone: data.phone,
-          password: passwordHash,
-          role: 'TEACHER',
-          forcePasswordChange: true,
-        },
-      });
-      return tx.teacher.create({
-        data: { ...data, teacherCode, userId: user.id, classes: { connect: classIds } },
-        include: TEACHER_INCLUDE,
-      });
+    const teacher = await prisma.teacher.create({
+      data: {
+        ...data,
+        teacherCode,
+        password: passwordHash,
+        role: 'TEACHER',
+        forcePasswordChange: true,
+        classes: { connect: classIds },
+      },
+      include: TEACHER_INCLUDE,
     });
     return toDto(teacher);
   }
 
-  /** Updates the teacher and keeps their account in sync; a new password resets the sign-in. */
+  /** Updates the teacher; a new password resets the sign-in (the first sign-in asks for a new one again). */
   static async updateTeacher(id, body) {
-    const existing = await prisma.teacher.findUnique({ where: { id }, include: { user: true } });
+    const existing = await prisma.teacher.findUnique({ where: { id }, select: { id: true, isActive: true } });
     if (!existing) {
       throw AppError.notFound('المعلم غير موجود');
     }
     const data = this.teacherData(body);
-    await this.assertUnique({ nationalId: data.nationalId, email: data.email, teacherId: id, userId: existing.userId });
+    if (!existing.isActive && data.teachingAssignments.some((a) => a.classes.length)) {
+      throw AppError.badRequest('المعلم غير مفعّل (ترك المدرسة). فعّله الأول قبل ما تسند له فصول');
+    }
+    await this.assertUnique({ nationalId: data.nationalId, email: data.email, teacherId: id });
+    await this.assertScheduleStillTaught(id, data.teachingAssignments);
     const classIds = await this.resolveClasses(this.assignedClassNames(data));
     const passwordHash = body.password ? await bcrypt.hash(body.password, SALT_ROUNDS) : null;
 
-    const teacher = await prisma.$transaction(async (tx) => {
-      let userId = existing.userId;
-      const account = { fullName: data.fullNameArabic, nationalId: data.nationalId, email: data.email, phone: data.phone };
-      if (userId) {
-        await tx.user.update({
-          where: { id: userId },
-          data: { ...account, ...(passwordHash && { password: passwordHash, forcePasswordChange: true }) },
-        });
-      } else if (passwordHash) {
-        // Teachers added before accounts existed get one when a password is set
-        const user = await tx.user.create({ data: { ...account, password: passwordHash, role: 'TEACHER', forcePasswordChange: true } });
-        userId = user.id;
-      }
-      return tx.teacher.update({
-        where: { id },
-        data: { ...data, userId, classes: { set: classIds } },
-        include: TEACHER_INCLUDE,
-      });
+    const teacher = await prisma.teacher.update({
+      where: { id },
+      data: {
+        ...data,
+        ...(passwordHash && { password: passwordHash, forcePasswordChange: true }),
+        classes: { set: classIds },
+      },
+      include: TEACHER_INCLUDE,
     });
     return toDto(teacher);
   }
 
   /**
-   * Removes the teacher and their account. Their attendance book rows keep the name,
-   * and classes they advised / timetable slots are simply left without a teacher.
+   * Deletes a teacher added by mistake (and their account & timetable periods).
+   * A teacher with anything on record (attendance book, grades, students' attendance, exams,
+   * materials, announcements, curricula) can't be deleted: they are deactivated instead,
+   * so that history keeps pointing at them.
+   * @returns how many timetable periods went with them
    */
   static async deleteTeacher(id) {
-    const existing = await prisma.teacher.findUnique({ where: { id } });
-    if (!existing) {
+    const teacher = await prisma.teacher.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        _count: {
+          select: {
+            attendanceRecords: true,
+            recordedGrades: true,
+            recordedAttendances: true,
+            announcedExams: true,
+            uploadedMaterials: true,
+            authoredAnnouncements: true,
+            curricula: true,
+            timetablePeriods: true,
+          },
+        },
+      },
+    });
+    if (!teacher) {
       throw AppError.notFound('المعلم غير موجود');
     }
-    await prisma.$transaction([
-      prisma.teacher.delete({ where: { id } }),
-      ...(existing.userId ? [prisma.user.delete({ where: { id: existing.userId } })] : []),
+
+    const { timetablePeriods, ...records } = teacher._count;
+    const LABELS = {
+      attendanceRecords: 'يوم في دفتر حضور المعلمين',
+      recordedGrades: 'درجة رصدها',
+      recordedAttendances: 'غياب طلاب سجّله',
+      announcedExams: 'امتحان',
+      uploadedMaterials: 'مادة تعليمية',
+      authoredAnnouncements: 'إعلان',
+      curricula: 'منهج',
+    };
+    const found = Object.entries(records)
+      .filter(([, count]) => count > 0)
+      .map(([key, count]) => `${count} ${LABELS[key]}`);
+    if (found.length) {
+      throw AppError.conflict(
+        `لا يمكن حذف المعلم لأن له سجلات (${found.join('، ')}). استخدم "إيقاف المعلم" بدلاً من الحذف للحفاظ على السجلات`
+      );
+    }
+
+    await prisma.teacher.delete({ where: { id } });
+    return { removedPeriods: timetablePeriods };
+  }
+
+  /**
+   * A teacher who left the school: can't sign in, leaves their classes, advised classes and timetable,
+   * and drops out of the attendance book. Everything they recorded is kept.
+   */
+  static async deactivateTeacher(id) {
+    const teacher = await prisma.teacher.findUnique({ where: { id }, select: { id: true, isActive: true } });
+    if (!teacher) {
+      throw AppError.notFound('المعلم غير موجود');
+    }
+    if (!teacher.isActive) {
+      throw AppError.badRequest('المعلم موقوف بالفعل');
+    }
+
+    const [periods, advised] = await prisma.$transaction([
+      prisma.timetablePeriod.deleteMany({ where: { teacherId: id } }),
+      prisma.class.updateMany({ where: { classTeacherId: id }, data: { classTeacherId: null } }),
+      prisma.teacher.update({
+        where: { id },
+        data: {
+          isActive: false,
+          status: 'INACTIVE',
+          teachingSubjects: [],
+          teachingAssignments: [],
+          classes: { set: [] },
+        },
+      }),
     ]);
+
+    const updated = await prisma.teacher.findUnique({ where: { id }, include: TEACHER_INCLUDE });
+    return { teacher: toDto(updated), removedPeriods: periods.count, removedAdvisedClasses: advised.count };
+  }
+
+  /** Brings a teacher back: they can sign in again (subjects & classes are assigned again from the form). */
+  static async activateTeacher(id) {
+    const teacher = await prisma.teacher.findUnique({ where: { id }, select: { id: true, isActive: true } });
+    if (!teacher) {
+      throw AppError.notFound('المعلم غير موجود');
+    }
+    if (teacher.isActive) {
+      throw AppError.badRequest('المعلم مفعّل بالفعل');
+    }
+    const updated = await prisma.teacher.update({
+      where: { id },
+      data: { isActive: true, status: 'ACTIVE' },
+      include: TEACHER_INCLUDE,
+    });
+    return toDto(updated);
+  }
+
+  /**
+   * A teacher's timetable may only hold what they teach: taking a subject or a class away from them
+   * while they still have periods of it in the school's newest term is refused (the timetable is changed
+   * first). Older terms are history and don't block anything. Term IDs sort by date ("2026-2027-T1" < "…-T2").
+   */
+  static async assertScheduleStillTaught(teacherId, assignments) {
+    const newest = await prisma.timetablePeriod.aggregate({ _max: { termId: true } });
+    const termId = newest._max.termId;
+    if (!termId) return;
+    const periods = await prisma.timetablePeriod.findMany({
+      where: { teacherId, termId },
+      select: { subject: true, termId: true, class: { select: { name: true } } },
+    });
+    if (!periods.length) return;
+
+    const taught = new Set(assignments.flatMap((a) => a.classes.map((cls) => `${a.subject}|${cls}`)));
+    const orphaned = new Map();
+    for (const p of periods) {
+      const key = `${p.subject.trim()}|${p.class.name}`;
+      if (!taught.has(key)) orphaned.set(key, (orphaned.get(key) ?? 0) + 1);
+    }
+    if (!orphaned.size) return;
+
+    const list = [...orphaned].map(([key, count]) => {
+      const [subject, className] = key.split('|');
+      return `${subject} - فصل ${className} (${count} حصة)`;
+    });
+    throw AppError.conflict(
+      `المعلم عنده حصص في الجدول لمواد/فصول اتشالت منه: ${list.join('، ')}. عدّل جدول المعلم الأول وبعدين احفظ`
+    );
   }
 
   /** Every class a teacher can be assigned to: this year's classes (the standard 12 until classes are set up). */
@@ -267,8 +383,8 @@ export class TeachersService {
     const assignments = this.assignmentsFrom(body);
     return {
       fullNameArabic: body.fullName.trim().replace(/\s+/g, ' '),
-      nationalId: body.nationalId.trim(),
-      phone: body.phone.trim(),
+      nationalId: normalizeNationalId(body.nationalId),
+      phone: normalizePhone(body.phone),
       email: clean(body.email)?.toLowerCase() ?? null,
       jobTitle: clean(body.jobTitle),
       specialization: body.specialization.trim(),
@@ -297,18 +413,9 @@ export class TeachersService {
     return [...new Set(data.teachingAssignments.flatMap((a) => a.classes))];
   }
 
-  static async assertUnique({ nationalId, email, teacherId = null, userId = null }) {
-    const [teacherWithId, userWithId, userWithEmail] = await Promise.all([
-      prisma.teacher.findFirst({ where: { nationalId, ...(teacherId && { id: { not: teacherId } }) } }),
-      prisma.user.findFirst({ where: { nationalId, ...(userId && { id: { not: userId } }) } }),
-      email ? prisma.user.findFirst({ where: { email, ...(userId && { id: { not: userId } }) } }) : null,
-    ]);
-    if (teacherWithId || userWithId) {
-      throw AppError.conflict('الرقم القومي مسجل بالفعل لحساب آخر');
-    }
-    if (userWithEmail) {
-      throw AppError.conflict('البريد الإلكتروني مسجل بالفعل لحساب آخر');
-    }
+  /** The national ID / email isn't used by any other account: admin, teacher or student. */
+  static async assertUnique({ nationalId, email, teacherId = null }) {
+    await assertIdentityFree({ nationalId, email }, { model: 'teacher', id: teacherId });
   }
 
   /**

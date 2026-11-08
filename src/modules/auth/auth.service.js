@@ -3,10 +3,18 @@ import jwt from 'jsonwebtoken';
 import { prisma } from '../../config/database.js';
 import { env } from '../../config/env.js';
 import { AppError } from '../../shared/errors/app-error.js';
+import {
+  assertIdentityFree,
+  findAccount,
+  findAccountByIdentifier,
+  setAccountPassword,
+  toUserResponse,
+} from './accounts.js';
 
 export class AuthService {
   /**
    * Helper: Sign Standard Full JWT Token (Expires in 7 days by default)
+   * The role tells which table the id is in (users / teachers / students).
    * @param {Object} payload
    * @param {string} [expiresIn='7d']
    * @returns {string} JWT Token
@@ -47,47 +55,26 @@ export class AuthService {
     );
   }
 
-  /**
-   * Profile inclusion configuration for student and teacher relations
-   */
-  static get userProfileIncludes() {
-    return {
-      studentProfile: {
-        include: {
-          class: {
-            select: { id: true, name: true, displayNameArabic: true, gradeLevel: true },
-          },
-        },
-      },
-      teacherProfile: {
-        include: {
-          subjects: true,
-          classes: true,
-        },
-      },
-    };
-  }
-
   // ---- Student first sign-in: national ID + the school's student code (until they choose a password) ----
 
-  static isFirstStudentLogin(user) {
-    return user.role === 'STUDENT' && user.forcePasswordChange === true;
-  }
-
-  static studentNationalId(user) {
-    return user.nationalId || user.studentProfile?.nationalId || null;
+  static isFirstStudentLogin(account) {
+    return account.role === 'STUDENT' && account.forcePasswordChange === true;
   }
 
   /** Codes are compared ignoring case and spaces around them (e.g. "stu-2026-001" = "STU-2026-001"). */
-  static matchesStudentCode(value, user) {
-    const code = (user.studentCode || user.studentProfile?.studentCode || '').trim();
+  static matchesStudentCode(value, account) {
+    const code = (account.studentCode || '').trim();
     return Boolean(code) && typeof value === 'string' && value.trim().toUpperCase() === code.toUpperCase();
+  }
+
+  static async passwordMatches(password, account) {
+    return Boolean(account.password) && bcrypt.compare(password, account.password);
   }
 
   /**
    * Unified Login Endpoint Logic
    * Accepts { identifier, password }
-   * - Queries prisma.user where email, nationalId, or studentCode matches
+   * - Finds the account: an admin (users), a teacher or a student, by national ID / email / code
    * - Verifies bcrypt password (a student's first sign-in: national ID + student code instead)
    * - Verifies status === 'ACTIVE'
    * - Checks forcePasswordChange:
@@ -113,83 +100,29 @@ export class AuthService {
 
     const trimmedIdentifier = identifier.trim();
 
-    // 1. Primary lookup: query prisma.user by email, nationalId, or studentCode
-    let user = await prisma.user.findFirst({
-      where: {
-        OR: [
-          { email: trimmedIdentifier.toLowerCase() },
-          { nationalId: trimmedIdentifier },
-          { studentCode: trimmedIdentifier },
-        ],
-      },
-      include: this.userProfileIncludes,
-    });
-
-    // 2. Resilient Fallback: If not found in User directly, lookup via Student or Teacher relation
-    if (!user) {
-      const student = await prisma.student.findFirst({
-        where: {
-          OR: [
-            { studentCode: trimmedIdentifier },
-            { nationalId: trimmedIdentifier },
-          ],
-        },
-        include: {
-          user: {
-            include: this.userProfileIncludes,
-          },
-        },
-      });
-
-      if (student && student.user) {
-        user = student.user;
-      }
-    }
-
-    if (!user) {
-      const teacher = await prisma.teacher.findFirst({
-        where: {
-          OR: [
-            { nationalId: trimmedIdentifier },
-            { teacherCode: trimmedIdentifier },
-          ],
-        },
-        include: {
-          user: {
-            include: this.userProfileIncludes,
-          },
-        },
-      });
-
-      if (teacher && teacher.user) {
-        user = teacher.user;
-      }
-    }
-
-    // 3. User verification
-    if (!user) {
+    // 1. The account behind the identifier, whichever table it is in
+    const account = await findAccountByIdentifier(trimmedIdentifier, { withPassword: true, withProfile: true });
+    if (!account) {
       throw AppError.unauthorized('بيانات الدخول غير صحيحة');
     }
 
-    // 4. Password verification - before the status check, so a suspended account
+    // 2. Password verification - before the status check, so a suspended account
     // is only revealed to someone who knows its password.
     // A student who hasn't chosen a password yet signs in with their national ID + school code.
-    const isPasswordValid = this.isFirstStudentLogin(user)
-      ? trimmedIdentifier === this.studentNationalId(user) && this.matchesStudentCode(password, user)
-      : await bcrypt.compare(password, user.password);
+    const isPasswordValid = this.isFirstStudentLogin(account)
+      ? trimmedIdentifier === account.nationalId && this.matchesStudentCode(password, account)
+      : await this.passwordMatches(password, account);
     if (!isPasswordValid) {
       throw AppError.unauthorized('بيانات الدخول غير صحيحة');
     }
 
-    if (user.status !== 'ACTIVE') {
+    if (account.status !== 'ACTIVE') {
       throw AppError.forbidden('تم تجميد أو تعطيل هذا الحساب. يرجى التواصل مع إدارة النظام.');
     }
 
-    const resolvedProfile = user.studentProfile || user.teacherProfile || null;
-
-    // 5. Flow Differentiation: First-time login requiring password change
-    if (user.forcePasswordChange === true) {
-      const tempToken = this.signTempToken({ id: user.id, role: user.role });
+    // 3. Flow Differentiation: First-time login requiring password change
+    if (account.forcePasswordChange === true) {
+      const tempToken = this.signTempToken({ id: account.id, role: account.role });
 
       return {
         status: 'success',
@@ -197,31 +130,22 @@ export class AuthService {
         tempToken,
         message: 'يرجى تعيين كلمة مرور جديدة لتفعيل الحساب',
         user: {
-          id: user.id,
-          fullName: user.fullName || user.name,
-          role: user.role,
+          id: account.id,
+          fullName: account.fullName,
+          role: account.role,
         },
       };
     }
 
-    // 6. Standard Login Flow
-    const token = this.signToken({ id: user.id, role: user.role }, '7d');
+    // 4. Standard Login Flow
+    const token = this.signToken({ id: account.id, role: account.role }, '7d');
+    const { phone, jobTitle, ...user } = toUserResponse(account);
 
     return {
       status: 'success',
       requirePasswordChange: false,
       token,
-      user: {
-        id: user.id,
-        fullName: user.fullName || user.name,
-        email: user.email,
-        nationalId: user.nationalId,
-        studentCode: user.studentCode,
-        role: user.role,
-        status: user.status,
-        permissions: user.permissions || [],
-        profile: resolvedProfile,
-      },
+      user,
     };
   }
 
@@ -229,103 +153,65 @@ export class AuthService {
    * Set Initial Password
    * Updates password, sets forcePasswordChange = false, returns standard full JWT
    *
-   * @param {string} userId
+   * @param {Object} sessionUser req.user (from the temporary token)
    * @param {string} newPassword
    */
-  static async setInitialPassword(userId, newPassword) {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      include: this.userProfileIncludes,
-    });
+  static async setInitialPassword(sessionUser, newPassword) {
+    const account = await findAccount(sessionUser.role, sessionUser.id, { withProfile: true });
 
-    if (!user) {
+    if (!account) {
       throw AppError.notFound('المستخدم غير موجود');
     }
 
-    if (!user.forcePasswordChange) {
+    if (!account.forcePasswordChange) {
       throw AppError.badRequest('تم تفعيل الحساب وتعيين كلمة المرور مسبقاً');
     }
 
     // The code is printed on the student's card, so it can't become their password
-    if (user.role === 'STUDENT' && this.matchesStudentCode(newPassword, user)) {
+    if (account.role === 'STUDENT' && this.matchesStudentCode(newPassword, account)) {
       throw AppError.badRequest('لا يمكن استخدام كود الطالب ككلمة مرور، يرجى اختيار كلمة مرور خاصة بك');
     }
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(newPassword, salt);
+    await setAccountPassword(account, hashedPassword);
 
-    const updatedUser = await prisma.user.update({
-      where: { id: userId },
-      data: {
-        password: hashedPassword,
-        forcePasswordChange: false,
-      },
-      include: this.userProfileIncludes,
-    });
-
-    const token = this.signToken({ id: updatedUser.id, role: updatedUser.role }, '7d');
-    const resolvedProfile = updatedUser.studentProfile || updatedUser.teacherProfile || null;
+    const token = this.signToken({ id: account.id, role: account.role }, '7d');
+    const { phone, jobTitle, ...user } = toUserResponse(account);
 
     return {
       status: 'success',
       message: 'تم تحديث كلمة المرور وتفعيل الحساب بنجاح',
       token,
-      user: {
-        id: updatedUser.id,
-        fullName: updatedUser.fullName || updatedUser.name,
-        email: updatedUser.email,
-        nationalId: updatedUser.nationalId,
-        studentCode: updatedUser.studentCode,
-        role: updatedUser.role,
-        status: updatedUser.status,
-        permissions: updatedUser.permissions || [],
-        profile: resolvedProfile,
-      },
+      user,
     };
   }
 
   /**
    * Session Introspection: Get Current Authenticated User Session
    *
-   * @param {string} userId
+   * @param {Object} sessionUser req.user
    */
-  static async getCurrentUser(userId) {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      include: this.userProfileIncludes,
-    });
+  static async getCurrentUser(sessionUser) {
+    const account = await findAccount(sessionUser.role, sessionUser.id, { withProfile: true });
 
-    if (!user) {
+    if (!account) {
       throw AppError.notFound('المستخدم غير موجود');
     }
 
-    const resolvedProfile = user.studentProfile || user.teacherProfile || null;
-
-    return {
-      id: user.id,
-      fullName: user.fullName || user.name,
-      email: user.email,
-      nationalId: user.nationalId,
-      studentCode: user.studentCode,
-      role: user.role,
-      status: user.status,
-      permissions: user.permissions || [],
-      phone: user.phone,
-      jobTitle: user.jobTitle,
-      profile: resolvedProfile,
-    };
+    return toUserResponse(account);
   }
 
   /**
-   * Update Own Profile (school administration accounts)
+   * Update Own Profile (school administration accounts, in "users")
    * Changing the login identifiers (national ID / email) requires the current password,
    * so an unattended open session can't take the account over.
    *
-   * @param {string} userId
+   * @param {Object} sessionUser req.user
    * @param {Object} data { fullName?, nationalId?, email?, phone?, jobTitle?, currentPassword? }
    */
-  static async updateProfile(userId, data) {
-    const user = await prisma.user.findUnique({ where: { id: userId } });
+  static async updateProfile(sessionUser, data) {
+    const user = await prisma.user.findUnique({ where: { id: sessionUser.id } });
     if (!user) {
       throw AppError.notFound('المستخدم غير موجود');
     }
@@ -347,22 +233,11 @@ export class AuthService {
         throw AppError.badRequest('كلمة المرور الحالية غير صحيحة');
       }
 
-      const conditions = [];
-      if (nationalIdChanged) conditions.push({ nationalId });
-      if (emailChanged && email) conditions.push({ email });
-      if (conditions.length) {
-        const existing = await prisma.user.findFirst({
-          where: { OR: conditions, NOT: { id: userId } },
-          select: { nationalId: true },
-        });
-        if (existing) {
-          throw AppError.conflict(
-            nationalIdChanged && existing.nationalId === nationalId
-              ? 'الرقم القومي مسجل بالفعل لمستخدم آخر'
-              : 'البريد الإلكتروني مسجل بالفعل لمستخدم آخر'
-          );
-        }
-      }
+      // Not taken by any other account: admin, teacher or student
+      await assertIdentityFree(
+        { nationalId: nationalIdChanged ? nationalId : null, email: emailChanged ? email : null },
+        { model: 'user', id: user.id }
+      );
     }
 
     // A sign-in identifier must remain: national ID or email
@@ -372,7 +247,7 @@ export class AuthService {
 
     const fullName = data.fullName?.trim();
     await prisma.user.update({
-      where: { id: userId },
+      where: { id: user.id },
       data: {
         ...(fullName && { fullName, name: fullName }),
         ...(nationalIdChanged && { nationalId }),
@@ -382,33 +257,30 @@ export class AuthService {
       },
     });
 
-    return this.getCurrentUser(userId);
+    return this.getCurrentUser(sessionUser);
   }
 
   /**
    * Change Own Password (needs the current one)
    *
-   * @param {string} userId
+   * @param {Object} sessionUser req.user
    * @param {string} currentPassword
    * @param {string} newPassword
    */
-  static async changePassword(userId, currentPassword, newPassword) {
-    const user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user) {
+  static async changePassword(sessionUser, currentPassword, newPassword) {
+    const account = await findAccount(sessionUser.role, sessionUser.id, { withPassword: true });
+    if (!account) {
       throw AppError.notFound('المستخدم غير موجود');
     }
 
-    const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
+    const isPasswordValid = await this.passwordMatches(currentPassword, account);
     if (!isPasswordValid) {
       throw AppError.badRequest('كلمة المرور الحالية غير صحيحة');
     }
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(newPassword, salt);
-    await prisma.user.update({
-      where: { id: userId },
-      data: { password: hashedPassword, forcePasswordChange: false },
-    });
+    await setAccountPassword(account, hashedPassword);
 
     return { status: 'success', message: 'تم تغيير كلمة المرور بنجاح' };
   }
@@ -416,8 +288,8 @@ export class AuthService {
   /**
    * Alias for getCurrentUser
    */
-  static async getMe(userId) {
-    return this.getCurrentUser(userId);
+  static async getMe(sessionUser) {
+    return this.getCurrentUser(sessionUser);
   }
 }
 

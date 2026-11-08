@@ -40,6 +40,7 @@ export class MaterialModel {
       subject: { select: { id: true, code: true, nameArabic: true } },
       class: { select: { id: true, name: true } },
       uploader: { select: { id: true, name: true, role: true } },
+      teacherUploader: { select: { id: true, fullNameArabic: true, role: true } },
     };
   }
 
@@ -51,9 +52,10 @@ export class MaterialModel {
     });
   }
 
-  /** One page of materials, newest first, with the total for the page count. */
-  static async findPage(filters = {}, { skip, take }) {
-    const where = this.whereOf(filters);
+  /** One page of materials, newest first, with the total for the page count. `visible`: what the viewer may see. */
+  static async findPage(filters = {}, { skip, take }, visible = {}) {
+    // Its own AND item, so the filters can't replace it
+    const where = { AND: [visible, this.whereOf(filters)] };
     const [total, items] = await Promise.all([
       prisma.material.count({ where }),
       prisma.material.findMany({
@@ -74,6 +76,7 @@ export class MaterialModel {
         subject: true,
         class: true,
         uploader: { select: { id: true, name: true, role: true } },
+        teacherUploader: { select: { id: true, fullNameArabic: true, role: true } },
       },
     });
   }
@@ -90,7 +93,9 @@ export class MaterialModel {
         fileName: data.fileName || null,
         fileSize: data.fileSize || null,
         description: data.description || null,
+        // An admin (users) or a teacher (teachers)
         uploadedById: data.uploadedById || null,
+        uploadedByTeacherId: data.uploadedByTeacherId || null,
       },
       include: {
         subject: true,
