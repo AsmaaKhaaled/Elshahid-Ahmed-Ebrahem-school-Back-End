@@ -53,7 +53,7 @@ export class ClassesService {
       }
     }
     if (blocked.length) {
-      throw AppError.badRequest(`مينفعش تقليل عدد الفصول لأن فيه طلاب في: ${blocked.join('، ')}. انقلهم لفصل تاني الأول`);
+      throw AppError.badRequest(`لا يمكن تقليل عدد الفصول لوجود طلاب في: ${blocked.join('، ')}. انقلهم إلى فصل آخر أولًا`);
     }
 
     await prisma.$transaction([

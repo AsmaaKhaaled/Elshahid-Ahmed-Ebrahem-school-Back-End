@@ -73,7 +73,7 @@ export const uploadDocument = (folder) => {
           error.code === 'LIMIT_FILE_SIZE'
             ? `حجم الملف أكبر من ${MAX_DOCUMENT_MB} ميجا`
             : error.code === 'LIMIT_FILE_COUNT' || error.code === 'LIMIT_UNEXPECTED_FILE'
-              ? 'ارفع ملف واحد بس في المرة'
+              ? 'ارفع ملفًا واحدًا فقط في المرة'
               : 'تعذر رفع الملف';
         return next(AppError.badRequest(message));
       }

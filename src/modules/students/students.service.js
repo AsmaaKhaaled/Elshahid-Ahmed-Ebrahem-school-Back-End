@@ -554,7 +554,7 @@ export class StudentsService {
       throw AppError.badRequest('بيانات الاستيراد يجب أن تكون مصفوفة غير فارغة');
     }
     if (studentsList.length > MAX_IMPORT_ROWS) {
-      throw AppError.badRequest(`الحد الأقصى ${MAX_IMPORT_ROWS} طالب في المرة الواحدة (الملف فيه ${studentsList.length})`);
+      throw AppError.badRequest(`الحد الأقصى ${MAX_IMPORT_ROWS} طالب في المرة الواحدة (الملف يحتوي على ${studentsList.length})`);
     }
 
     const createdList = [];
@@ -613,7 +613,7 @@ export class StudentsService {
     if (readings.size === 1) return { classId: [...readings][0] };
     return {
       parseError:
-        'خانة الفصل اتحولت لتاريخ في الإكسيل فمش واضح الفصل المقصود. غيّر تنسيق عمود الفصل إلى "نص" واكتب الفصل مثل 2/3',
+        'تحولت خانة الفصل إلى تاريخ في ملف Excel، لذا فالفصل المقصود غير واضح. غيّر تنسيق عمود الفصل إلى "نص" واكتب الفصل مثل 2/3',
     };
   }
 

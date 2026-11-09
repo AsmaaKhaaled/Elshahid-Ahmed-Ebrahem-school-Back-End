@@ -127,7 +127,7 @@ export class SchedulesService {
     ];
     if (notTaught.length) {
       throw AppError.badRequest(
-        `المعلم مش مُسند له: ${notTaught.join('، ')}. أضف المادة والفصل للمعلم من صفحة المعلمين الأول`
+        `لم يُسند إلى المعلم: ${notTaught.join('، ')}. أضف المادة والفصل للمعلم من صفحة المعلمين أولًا`
       );
     }
 

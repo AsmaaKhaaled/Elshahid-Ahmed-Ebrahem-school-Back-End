@@ -251,7 +251,7 @@ export class TeacherAttendanceService {
       where: { startDate: { lte: end }, endDate: { gte: startDate } },
     });
     if (overlapping) {
-      throw AppError.conflict(`الفترة دي متداخلة مع إجازة مسجلة بالفعل: ${overlapping.reason}`);
+      throw AppError.conflict(`هذه الفترة متداخلة مع إجازة مسجلة بالفعل: ${overlapping.reason}`);
     }
 
     // A day that already has attendance can't silently become a day off
@@ -261,7 +261,7 @@ export class TeacherAttendanceService {
       orderBy: { date: 'asc' },
     });
     if (recorded) {
-      throw AppError.conflict(`يوم ${recorded.date} اتسجل فيه حضور المعلمين بالفعل، لا يمكن تسجيله إجازة`);
+      throw AppError.conflict(`يوم ${recorded.date} تم تسجيل حضور المعلمين فيه بالفعل، لا يمكن تسجيله إجازة`);
     }
 
     return prisma.schoolHoliday.create({
