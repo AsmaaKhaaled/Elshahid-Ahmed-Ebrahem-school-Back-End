@@ -101,6 +101,7 @@ model Student {
   attendances       Attendance[]
   grades            Grade[]
   announcementReads AnnouncementRead[]
+  honorEntries      HonorRoll[]
 
   @@index([classId])
   @@index([gradeLevel])
@@ -159,6 +160,7 @@ model Teacher {
   uploadedMaterials     Material[]         @relation("MaterialTeacherUploader")
   authoredAnnouncements Announcement[]     @relation("AnnouncementTeacherAuthor")
   announcementReads     AnnouncementRead[]
+  honorEntries          HonorRoll[]
 
   @@map("teachers")
 }
@@ -670,3 +672,68 @@ model CurriculumPlanWeek {
   @@unique([curriculumId, week])
   @@map("curriculum_plan_weeks")
 }
+
+// ==========================================
+// 15. Honor Roll System (لوحة الشرف المدرسي)
+// ==========================================
+
+enum HonorKind {
+  TEACHER
+  STUDENT
+}
+
+model HonorRoll {
+  id           String    @id @default(cuid())
+  kind         HonorKind // TEACHER أو STUDENT
+  name         String    // الاسم العربي الكامل
+  photoUrl     String?   // رابط الصورة الشخصية (اختياري)
+  
+  // معرّفات الربط بالكيان الأصلي (اختياري للسماح بالإضافة اليدوية أيضاً)
+  teacherId    String?
+  studentId    String?
+
+  // خاص بالمعلم: مصفوفة المواد التي يدرسها (تدعم مادة واحدة أو عدة مواد)
+  subjects     String[]  @default([])
+  
+  // خاص بالطالب: الفصل الدراسي (مثال: "3/1" أو "1/2")
+  section      String?
+  
+  // سبب التكريم أو الإنجاز (مثال: "المعلم المثالي على مستوى الإدارة" / "الأول على الصف الثالث")
+  achievement  String?
+  
+  // التوثيق الأكاديمي
+  academicYear String?   @default("2026/2027")
+  term         String?   @default("الفصل الدراسي الأول")
+  order        Int       @default(0) // لترتيب ظهور الكروت
+  isActive     Boolean   @default(true)
+
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  teacher      Teacher?  @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+  student      Student?  @relation(fields: [studentId], references: [id], onDelete: SetNull)
+
+  @@index([kind])
+  @@index([isActive])
+  @@map("honor_roll")
+}
+
+// ==========================================
+// 16. Home Content (محتوى الصفحة الرئيسية)
+// ==========================================
+
+model HomeContent {
+  id          String   @id @default(cuid())
+  key         String   @unique @default("principal_word") // معرف نوع المحتوى
+  name        String   // اسم المدير (مثال: أ. عبدالله أحمد علي)
+  title       String   @default("مدير المدرسة") // المسمى الوظيفي
+  photoUrl    String?  @db.Text // رابط الصورة أو Base64 data URL
+  message     String[] // مصفوفة فقرات الكلمة (PostgreSQL text array)
+  updatedBy   String?  // كود أو ID الأدمن الذي أجرى التعديل
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+
+  @@map("home_contents")
+}
+
+

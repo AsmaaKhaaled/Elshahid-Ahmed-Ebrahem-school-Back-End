@@ -456,6 +456,64 @@ const schemas = {
     properties: { title: { type: 'string' }, content: { type: 'string' } },
     additionalProperties: true,
   },
+
+  // Honor Roll (لوحة الشرف المدرسي)
+  CreateHonorRoll: {
+    type: 'object',
+    required: ['kind', 'name'],
+    properties: {
+      kind: { type: 'string', enum: ['TEACHER', 'STUDENT'] },
+      name: { type: 'string' },
+      photoUrl: { type: 'string', nullable: true },
+      teacherId: { type: 'string', nullable: true },
+      studentId: { type: 'string', nullable: true },
+      subjects: { type: 'array', items: { type: 'string' }, description: 'Required for TEACHER' },
+      section: { type: 'string', description: 'Required for STUDENT (e.g. 3/1)' },
+      achievement: { type: 'string', nullable: true },
+      academicYear: { type: 'string', default: '2026/2027' },
+      term: { type: 'string', default: 'الفصل الدراسي الأول' },
+      order: { type: 'integer', default: 0 },
+      isActive: { type: 'boolean', default: true },
+    },
+  },
+  UpdateHonorRoll: {
+    type: 'object',
+    properties: {
+      kind: { type: 'string', enum: ['TEACHER', 'STUDENT'] },
+      name: { type: 'string' },
+      photoUrl: { type: 'string', nullable: true },
+      teacherId: { type: 'string', nullable: true },
+      studentId: { type: 'string', nullable: true },
+      subjects: { type: 'array', items: { type: 'string' } },
+      section: { type: 'string' },
+      achievement: { type: 'string' },
+      academicYear: { type: 'string' },
+      term: { type: 'string' },
+      order: { type: 'integer' },
+      isActive: { type: 'boolean' },
+    },
+    additionalProperties: true,
+  },
+
+  // Home Content (محتوى الصفحة الرئيسية)
+  UpdatePrincipalWord: {
+    type: 'object',
+    required: ['name', 'title', 'message'],
+    properties: {
+      name: { type: 'string', minLength: 3, maxLength: 60, example: 'أ. عبدالله أحمد علي' },
+      title: { type: 'string', minLength: 2, maxLength: 50, example: 'مدير المدرسة' },
+      photoUrl: { type: 'string', nullable: true, example: 'images/principal-placeholder.svg' },
+      message: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Array of paragraphs or multiline string',
+        example: [
+          'أبنائي الطلاب، السادة أولياء الأمور، زملائي المعلمين... أهلاً بكم في البوابة الإلكترونية لمدرستنا.',
+          'نؤمن بأن المدرسة بيت ثانٍ يصنع العقول ويبني الشخصية...'
+        ],
+      },
+    },
+  },
 };
 
 // ---------- Paths ----------
@@ -932,6 +990,90 @@ const paths = {
     access: { list: ALL, get: ALL, create: ADMIN_TEACHER, update: ADMIN_TEACHER, remove: ADMIN_TEACHER },
   }),
 
+  // Honor Roll (لوحة الشرف المدرسي)
+  '/api/v1/honor-roll': {
+    get: {
+      tags: ['Honor Roll'],
+      summary: 'Get Honor Roll list (Public / Admin)',
+      security: [],
+      parameters: [
+        queryParam('kind', 'TEACHER or STUDENT', { type: 'string', enum: ['TEACHER', 'STUDENT'] }),
+        queryParam('academicYear', 'Academic year filter, e.g. 2026/2027'),
+        queryParam('term', 'Term filter, e.g. الفصل الدراسي الأول'),
+        queryParam('isActive', 'Filter active status (true/false/all)'),
+      ],
+      responses: responses(200),
+    },
+    post: {
+      tags: ['Honor Roll'],
+      summary: 'Add entry to Honor Roll',
+      description: roles('ADMIN', 'SUPER_ADMIN'),
+      requestBody: jsonBody(ref('CreateHonorRoll')),
+      responses: { 201: { description: 'Created' }, ...responses(401, 403, 422) },
+    },
+  },
+  '/api/v1/honor-roll/candidates': {
+    get: {
+      tags: ['Honor Roll'],
+      summary: 'Search candidates for autocomplete (Teachers or Students)',
+      description: roles('ADMIN', 'SUPER_ADMIN'),
+      parameters: [
+        { name: 'type', in: 'query', required: true, schema: { type: 'string', enum: ['TEACHER', 'STUDENT'] } },
+        queryParam('q', 'Search term by name, code or specialization'),
+        queryParam('limit', 'Max results (default 10)', { type: 'integer', default: 10 }),
+      ],
+      responses: responses(200, 401, 403, 422),
+    },
+  },
+  '/api/v1/honor-roll/{id}': {
+    parameters: [idParam()],
+    get: {
+      tags: ['Honor Roll'],
+      summary: 'Get single honor entry by ID',
+      security: [],
+      responses: responses(200, 404),
+    },
+    put: {
+      tags: ['Honor Roll'],
+      summary: 'Update honor entry',
+      description: roles('ADMIN', 'SUPER_ADMIN'),
+      requestBody: jsonBody(ref('UpdateHonorRoll')),
+      responses: responses(200, 401, 403, 404, 422),
+    },
+    delete: {
+      tags: ['Honor Roll'],
+      summary: 'Delete honor entry',
+      description: roles('ADMIN', 'SUPER_ADMIN'),
+      responses: responses(200, 401, 403, 404),
+    },
+  },
+  '/api/v1/honor-roll/{id}/toggle-active': {
+    parameters: [idParam()],
+    patch: {
+      tags: ['Honor Roll'],
+      summary: 'Toggle active status of honor entry',
+      description: roles('ADMIN', 'SUPER_ADMIN'),
+      responses: responses(200, 401, 403, 404),
+    },
+  },
+
+  // Home Content (محتوى الصفحة الرئيسية)
+  '/api/v1/home-content/principal': {
+    get: {
+      tags: ['Home Content'],
+      summary: "Get Principal's Word (Public)",
+      security: [],
+      responses: responses(200),
+    },
+    put: {
+      tags: ['Home Content'],
+      summary: "Update Principal's Word",
+      description: roles('ADMIN', 'SUPER_ADMIN'),
+      requestBody: jsonBody(ref('UpdatePrincipalWord')),
+      responses: { 200: { description: 'Updated' }, ...responses(401, 403, 422) },
+    },
+  },
+
   // Admins (Super Admin only) — also reachable under /api/v1/admin/admins
   '/api/v1/admin': {
     get: {
@@ -1027,6 +1169,8 @@ export const swaggerSpec = {
     'Exams',
     'Grades',
     'Announcements',
+    'Honor Roll',
+    'Home Content',
   ].map((name) => ({ name })),
   components: {
     securitySchemes: {

@@ -25,6 +25,8 @@ import announcementsRoutes from './modules/announcements/announcements.routes.js
 import adminRoutes from './modules/admin/admin.routes.js';
 import teacherAttendanceRoutes from './modules/teacher-attendance/teacher-attendance.routes.js';
 import curriculaRoutes from './modules/curricula/curricula.routes.js';
+import honorRollRoutes from './modules/honor-roll/honor-roll.routes.js';
+import homeContentRoutes from './modules/home-content/home-content.routes.js';
 
 const app = express();
 
@@ -56,8 +58,8 @@ app.use(
     credentials: true,
   })
 );
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Root and Health Check
 app.get('/', (req, res) => {
@@ -80,6 +82,8 @@ app.get('/', (req, res) => {
         'announcements',
         'teacher-attendance',
         'curricula',
+        'honor-roll',
+        'home-content',
       ],
       timestamp: new Date().toISOString(),
     },
@@ -113,6 +117,8 @@ app.use(`${API_PREFIX}/grades`, gradesRoutes);
 app.use(`${API_PREFIX}/announcements`, announcementsRoutes);
 app.use(`${API_PREFIX}/teacher-attendance`, teacherAttendanceRoutes);
 app.use(`${API_PREFIX}/curricula`, curriculaRoutes);
+app.use(`${API_PREFIX}/honor-roll`, honorRollRoutes);
+app.use(`${API_PREFIX}/home-content`, homeContentRoutes);
 app.use(`${API_PREFIX}/admin/admins`, adminRoutes);
 app.use(`${API_PREFIX}/admin`, adminRoutes);
 
