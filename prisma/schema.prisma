@@ -722,7 +722,7 @@ model HonorRoll {
 // 16. Home Content (محتوى الصفحة الرئيسية)
 // ==========================================
 
-model HomeContent {
+model HomePrincipal {
   id          String   @id @default(cuid())
   key         String   @unique @default("principal_word") // معرف نوع المحتوى
   name        String   // اسم المدير (مثال: أ. عبدالله أحمد علي)
@@ -733,10 +733,10 @@ model HomeContent {
   updatedAt   DateTime @updatedAt
   createdAt   DateTime @default(now())
 
-  @@map("home_contents")
+  @@map("home_principal_word")
 }
 
-model GallerySlide {
+model HomeGallerySlide {
   id        String   @id @default(cuid())
   title     String   // عنوان النشاط (مثال: الأنشطة الطلابية)
   caption   String?  // وصف النشاط (مثال: طلابنا في أنشطة متنوعة تنمّي مواهبهم وروح الفريق)
@@ -748,7 +748,9 @@ model GallerySlide {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@map("gallery_slides")
+  @@index([order])
+  @@index([hidden])
+  @@map("home_gallery_slides")
 }
 
 

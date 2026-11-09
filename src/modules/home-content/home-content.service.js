@@ -23,7 +23,7 @@ export class HomeContentService {
    * Returns current principal word or creates and returns the default.
    */
   static async getPrincipalWord() {
-    const record = await prisma.homeContent.findUnique({
+    const record = await prisma.homePrincipal.findUnique({
       where: { key: 'principal_word' },
     });
 
@@ -38,7 +38,7 @@ export class HomeContentService {
     }
 
     // Initialize with default content if not yet seeded
-    const created = await prisma.homeContent.create({
+    const created = await prisma.homePrincipal.create({
       data: {
         key: 'principal_word',
         name: DEFAULT_PRINCIPAL_CONTENT.name,
@@ -81,7 +81,7 @@ export class HomeContentService {
         ? data.photoUrl.trim()
         : null;
 
-    const result = await prisma.homeContent.upsert({
+    const result = await prisma.homePrincipal.upsert({
       where: { key: 'principal_word' },
       update: {
         name: data.name.trim(),
@@ -121,7 +121,7 @@ export class HomeContentService {
     if (!id || typeof id !== 'string') return null;
 
     // 1. Direct match by DB ID
-    let slide = await prisma.gallerySlide.findUnique({ where: { id } });
+    let slide = await prisma.homeGallerySlide.findUnique({ where: { id } });
     if (slide) return slide;
 
     // 2. Legacy/mock id fallback (e.g. 'slide-1', 'slide-2')
@@ -138,7 +138,7 @@ export class HomeContentService {
 
       // Try title first
       if (fallbackTitle) {
-        slide = await prisma.gallerySlide.findFirst({
+        slide = await prisma.homeGallerySlide.findFirst({
           where: { title: { contains: fallbackTitle } },
         });
         if (slide) return slide;
@@ -146,7 +146,7 @@ export class HomeContentService {
 
       // Try order
       if (!isNaN(orderNum)) {
-        slide = await prisma.gallerySlide.findFirst({
+        slide = await prisma.homeGallerySlide.findFirst({
           where: { order: orderNum },
         });
         if (slide) return slide;
@@ -163,9 +163,9 @@ export class HomeContentService {
    */
   static async getGallerySlides({ includeHidden = false } = {}) {
     // 1. Auto-seed if table is empty
-    const count = await prisma.gallerySlide.count();
+    const count = await prisma.homeGallerySlide.count();
     if (count === 0) {
-      await prisma.gallerySlide.createMany({
+      await prisma.homeGallerySlide.createMany({
         data: DEFAULT_GALLERY_SLIDES.map((slide) => ({
           title: slide.title,
           caption: slide.caption,
@@ -181,7 +181,7 @@ export class HomeContentService {
     const where = showAll ? {} : { hidden: false };
 
     // 3. Fetch ordered slides
-    return prisma.gallerySlide.findMany({
+    return prisma.homeGallerySlide.findMany({
       where,
       orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
       select: {
@@ -203,12 +203,12 @@ export class HomeContentService {
    * @param {string} [userId]
    */
   static async createGallerySlide(data, userId = null) {
-    const maxOrderRecord = await prisma.gallerySlide.aggregate({
+    const maxOrderRecord = await prisma.homeGallerySlide.aggregate({
       _max: { order: true },
     });
     const nextOrder = (maxOrderRecord._max.order ?? 0) + 1;
 
-    return prisma.gallerySlide.create({
+    return prisma.homeGallerySlide.create({
       data: {
         title: data.title.trim(),
         caption: data.caption ? data.caption.trim() : null,
@@ -263,7 +263,7 @@ export class HomeContentService {
       updateData.order = data.order;
     }
 
-    return prisma.gallerySlide.update({
+    return prisma.homeGallerySlide.update({
       where: { id: existing.id },
       data: updateData,
       select: {
@@ -290,7 +290,7 @@ export class HomeContentService {
       throw AppError.notFound('صورة النشاط غير موجودة');
     }
 
-    const updated = await prisma.gallerySlide.update({
+    const updated = await prisma.homeGallerySlide.update({
       where: { id: existing.id },
       data: {
         hidden: !existing.hidden,
@@ -319,7 +319,7 @@ export class HomeContentService {
       const id = slideIds[index];
       const slide = await this.findSlideById(id);
       if (slide) {
-        await prisma.gallerySlide.update({
+        await prisma.homeGallerySlide.update({
           where: { id: slide.id },
           data: {
             order: index + 1,
@@ -342,7 +342,7 @@ export class HomeContentService {
       return { id };
     }
 
-    await prisma.gallerySlide.delete({ where: { id: existing.id } });
+    await prisma.homeGallerySlide.delete({ where: { id: existing.id } });
     return { id: existing.id };
   }
 }
