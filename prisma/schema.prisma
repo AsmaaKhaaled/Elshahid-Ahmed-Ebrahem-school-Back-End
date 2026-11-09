@@ -736,4 +736,19 @@ model HomeContent {
   @@map("home_contents")
 }
 
+model GallerySlide {
+  id        String   @id @default(cuid())
+  title     String   // عنوان النشاط (مثال: الأنشطة الطلابية)
+  caption   String?  // وصف النشاط (مثال: طلابنا في أنشطة متنوعة تنمّي مواهبهم وروح الفريق)
+  src       String   @db.Text // رابط الصورة أو Base64 data URL
+  order     Int      @default(0) // ترتيب العرض في الكاروسيل (تصاعدياً)
+  hidden    Boolean  @default(false) // مخفية أو معروضة للزوار
+  createdBy String?  // معرف الأدمن الذي أضاف الصورة
+  updatedBy String?  // معرف الأدمن الذي أجرى آخر تعديل
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("gallery_slides")
+}
+
 
