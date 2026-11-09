@@ -8,7 +8,7 @@ export const usersValidation = {
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!email || !emailRegex.test(email)) {
+    if (email && !emailRegex.test(email)) {
       errors.push({ field: 'email', message: 'Valid email is required' });
     }
 
@@ -16,9 +16,9 @@ export const usersValidation = {
       errors.push({ field: 'password', message: 'Password must be at least 6 characters' });
     }
 
-    // "users" is for the administration: teachers & students are added on their own pages
-    if (role && role !== 'ADMIN') {
-      errors.push({ field: 'role', message: 'Only ADMIN accounts are created here (teachers & students have their own pages)' });
+    const validRoles = ['SUPER_ADMIN', 'ADMIN', 'TEACHER', 'STUDENT', 'PARENT'];
+    if (role && !validRoles.includes(role.toUpperCase())) {
+      errors.push({ field: 'role', message: `Role must be one of: ${validRoles.join(', ')}` });
     }
 
     if (errors.length > 0) {
@@ -35,15 +35,16 @@ export const usersValidation = {
       errors.push({ field: 'name', message: 'Name must be at least 2 characters' });
     }
 
-    if (email !== undefined) {
+    if (email !== undefined && email !== null && email.trim() !== '') {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(email)) {
         errors.push({ field: 'email', message: 'Valid email is required' });
       }
     }
 
-    if (role !== undefined) {
-      errors.push({ field: 'role', message: 'The role is not changed here' });
+    const validRoles = ['SUPER_ADMIN', 'ADMIN', 'TEACHER', 'STUDENT', 'PARENT'];
+    if (role !== undefined && !validRoles.includes(role.toUpperCase())) {
+      errors.push({ field: 'role', message: `Role must be one of: ${validRoles.join(', ')}` });
     }
 
     if (errors.length > 0) {
