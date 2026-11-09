@@ -364,18 +364,18 @@ export class CurriculaService {
     const subject = body.subject.trim();
     const subjects = teacher.teachingSubjects.length ? teacher.teachingSubjects : [teacher.specialization];
     if (!subjects.includes(subject)) {
-      throw AppError.badRequest('المادة دي مش من المواد اللي بتدرّسها');
+      throw AppError.badRequest('هذه المادة ليست من المواد التي تدرّسها');
     }
     // Only the classes the admin assigned for this subject (all the teacher's classes for older records)
     const subjectClasses = assignmentsOf(teacher, classes.map((cls) => cls.name)).find((a) => a.subject === subject)?.classes;
     const myClasses = new Set(subjectClasses?.length ? subjectClasses : classes.map((cls) => cls.name));
     if (!myClasses.size) {
-      throw AppError.badRequest('لسه مفيش فصول متسجلة ليك، اطلب من الإدارة تعيين فصولك');
+      throw AppError.badRequest('لا توجد فصول مسجلة لك بعد، اطلب من الإدارة تعيين فصولك');
     }
     const sections = [...new Set(body.sections)].sort();
     const foreign = sections.filter((section) => !myClasses.has(section));
     if (foreign.length) {
-      throw AppError.badRequest(`الفصول دي مش من فصولك: ${foreign.join('، ')}`);
+      throw AppError.badRequest(`هذه الفصول ليست من فصولك: ${foreign.join('، ')}`);
     }
     return { subject, gradeId: body.gradeId, sections, description: (body.description ?? '').trim() };
   }
@@ -385,7 +385,7 @@ export class CurriculaService {
     try {
       return await save();
     } catch (error) {
-      if (error.code === 'P2002') throw AppError.conflict('عندك منهج للمادة دي في الصف ده بالفعل');
+      if (error.code === 'P2002') throw AppError.conflict('لديك منهج لهذه المادة في هذا الصف بالفعل');
       throw error;
     }
   }

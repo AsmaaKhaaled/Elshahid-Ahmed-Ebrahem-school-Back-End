@@ -175,7 +175,7 @@ export class TeachersService {
     }
     const data = this.teacherData(body);
     if (!existing.isActive && data.teachingAssignments.some((a) => a.classes.length)) {
-      throw AppError.badRequest('المعلم غير مفعّل (ترك المدرسة). فعّله الأول قبل ما تسند له فصول');
+      throw AppError.badRequest('المعلم غير مفعّل (ترك المدرسة). فعّله أولًا قبل إسناد فصول له');
     }
     await this.assertUnique({ nationalId: data.nationalId, email: data.email, teacherId: id });
     await this.assertScheduleStillTaught(id, data.teachingAssignments);
@@ -324,7 +324,7 @@ export class TeachersService {
       return `${subject} - فصل ${className} (${count} حصة)`;
     });
     throw AppError.conflict(
-      `المعلم عنده حصص في الجدول لمواد/فصول اتشالت منه: ${list.join('، ')}. عدّل جدول المعلم الأول وبعدين احفظ`
+      `للمعلم حصص في الجدول لمواد/فصول أُزيلت منه: ${list.join('، ')}. عدّل جدول المعلم أولًا ثم احفظ`
     );
   }
 

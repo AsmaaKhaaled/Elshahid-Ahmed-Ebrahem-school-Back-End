@@ -53,7 +53,7 @@ const validateTeacher = (body, { requirePassword }) => {
   }
   if (assignments !== undefined) {
     if (!isAssignmentList(assignments)) {
-      errors.push({ field: 'assignments', message: 'يجب تحديد مادة واحدة على الأقل والفصول اللي بيدرّسها فيها' });
+      errors.push({ field: 'assignments', message: 'يجب تحديد مادة واحدة على الأقل والفصول التي يدرّسها فيها' });
     } else if (!assignments.every((a) => isSchoolSubject(a.subject))) {
       errors.push({ field: 'assignments', message: SUBJECTS_MESSAGE });
     } else if (new Set(assignments.flatMap((a) => a.classes.map((cls) => cls.trim()))).size > MAX_CLASSES) {

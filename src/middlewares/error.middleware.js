@@ -30,7 +30,7 @@ export const errorHandler = (err, req, res, next) => {
   if (err.name === 'PrismaClientKnownRequestError') {
     if (err.code === 'P2002') {
       statusCode = 409;
-      message = 'البيانات دي مسجلة بالفعل لسجل آخر (قيمة مكررة)';
+      message = 'هذه البيانات مسجلة بالفعل لسجل آخر (قيمة مكررة)';
     } else if (err.code === 'P2025') {
       statusCode = 404;
       message = 'السجل المطلوب غير موجود';
