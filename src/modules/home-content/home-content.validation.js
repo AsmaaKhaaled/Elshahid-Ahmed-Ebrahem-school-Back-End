@@ -57,6 +57,114 @@ export const homeContentValidation = {
     }
     return null;
   },
+
+  createGallerySlide: (req) => {
+    const { title, caption, src, hidden } = req.body || {};
+    const errors = [];
+
+    if (!title || typeof title !== 'string' || title.trim().length < 2 || title.trim().length > 100) {
+      errors.push({
+        field: 'title',
+        message: 'عنوان النشاط مطلوب ويجب أن يكون بين 2 و 100 حرف',
+      });
+    }
+
+    if (caption !== undefined && caption !== null && typeof caption === 'string' && caption.trim().length > 300) {
+      errors.push({
+        field: 'caption',
+        message: 'وصف النشاط يجب ألا يتجاوز 300 حرف',
+      });
+    }
+
+    if (!src || typeof src !== 'string' || src.trim().length < 5) {
+      errors.push({
+        field: 'src',
+        message: 'رابط الصورة أو بيانات الصورة (src) مطلوب',
+      });
+    }
+
+    if (hidden !== undefined && typeof hidden !== 'boolean') {
+      errors.push({
+        field: 'hidden',
+        message: 'حقل الإخفاء (hidden) يجب أن يكون قيمة منطقية (boolean)',
+      });
+    }
+
+    if (errors.length > 0) {
+      return { message: 'فشل التحقق من صحة بيانات الصورة', details: errors };
+    }
+    return null;
+  },
+
+  updateGallerySlide: (req) => {
+    const { title, caption, src, hidden, order } = req.body || {};
+    const errors = [];
+
+    if (title !== undefined && (typeof title !== 'string' || title.trim().length < 2 || title.trim().length > 100)) {
+      errors.push({
+        field: 'title',
+        message: 'عنوان النشاط يجب أن يكون بين 2 و 100 حرف',
+      });
+    }
+
+    if (caption !== undefined && caption !== null && typeof caption === 'string' && caption.trim().length > 300) {
+      errors.push({
+        field: 'caption',
+        message: 'وصف النشاط يجب ألا يتجاوز 300 حرف',
+      });
+    }
+
+    if (src !== undefined && (typeof src !== 'string' || src.trim().length < 5)) {
+      errors.push({
+        field: 'src',
+        message: 'رابط الصورة غير صالح',
+      });
+    }
+
+    if (hidden !== undefined && typeof hidden !== 'boolean') {
+      errors.push({
+        field: 'hidden',
+        message: 'حقل الإخفاء (hidden) يجب أن يكون قيمة منطقية (boolean)',
+      });
+    }
+
+    if (order !== undefined && (!Number.isInteger(order) || order < 0)) {
+      errors.push({
+        field: 'order',
+        message: 'حقل الترتيب (order) يجب أن يكون رقماً صحيحاً موجباً',
+      });
+    }
+
+    if (errors.length > 0) {
+      return { message: 'فشل التحقق من صحة بيانات الصورة', details: errors };
+    }
+    return null;
+  },
+
+  reorderGallerySlides: (req) => {
+    const { slideIds } = req.body || {};
+    const errors = [];
+
+    if (!slideIds || !Array.isArray(slideIds) || slideIds.length === 0) {
+      errors.push({
+        field: 'slideIds',
+        message: 'مصفوفة معرفات الصور (slideIds) مطلوبة ولا يمكن أن تكون فارغة',
+      });
+    } else {
+      const hasInvalidItem = slideIds.some((id) => typeof id !== 'string' || id.trim().length === 0);
+      if (hasInvalidItem) {
+        errors.push({
+          field: 'slideIds',
+          message: 'جميع المعرفات داخل مصفوفة slideIds يجب أن تكون نصوصاً صالحة',
+        });
+      }
+    }
+
+    if (errors.length > 0) {
+      return { message: 'فشل التحقق من صحة بيانات إعادة الترتيب', details: errors };
+    }
+    return null;
+  },
 };
 
 export default homeContentValidation;

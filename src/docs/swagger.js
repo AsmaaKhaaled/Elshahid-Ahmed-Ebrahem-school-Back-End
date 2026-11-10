@@ -514,6 +514,41 @@ const schemas = {
       },
     },
   },
+
+  // Gallery Slides (صور أنشطة المدرسة)
+  CreateGallerySlide: {
+    type: 'object',
+    required: ['title', 'src'],
+    properties: {
+      title: { type: 'string', minLength: 2, maxLength: 100, example: 'الأنشطة الطلابية' },
+      caption: { type: 'string', maxLength: 300, nullable: true, example: 'طلابنا في أنشطة متنوعة تنمّي مواهبهم وروح الفريق.' },
+      src: { type: 'string', example: 'images/gallery/activities.svg' },
+      hidden: { type: 'boolean', default: false },
+    },
+  },
+  UpdateGallerySlide: {
+    type: 'object',
+    properties: {
+      title: { type: 'string', minLength: 2, maxLength: 100 },
+      caption: { type: 'string', maxLength: 300, nullable: true },
+      src: { type: 'string' },
+      hidden: { type: 'boolean' },
+      order: { type: 'integer' },
+    },
+    additionalProperties: true,
+  },
+  ReorderGallerySlides: {
+    type: 'object',
+    required: ['slideIds'],
+    properties: {
+      slideIds: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Ordered list of slide IDs',
+        example: ['cly1234567891', 'cly1234567890'],
+      },
+    },
+  },
 };
 
 // ---------- Paths ----------
@@ -1198,6 +1233,58 @@ const paths = {
       description: roles('ADMIN', 'SUPER_ADMIN'),
       requestBody: jsonBody(ref('UpdatePrincipalWord')),
       responses: { 200: { description: 'Updated' }, ...responses(401, 403, 422) },
+    },
+  },
+  '/api/v1/home-content/gallery': {
+    get: {
+      tags: ['Home Content'],
+      summary: 'Get school gallery slides (Public & Admin)',
+      security: [],
+      parameters: [
+        queryParam('includeHidden', 'Include hidden slides for admin (true/false)', { type: 'boolean' }),
+      ],
+      responses: responses(200),
+    },
+    post: {
+      tags: ['Home Content'],
+      summary: 'Add new school gallery slide',
+      description: roles('ADMIN', 'SUPER_ADMIN'),
+      requestBody: jsonBody(ref('CreateGallerySlide')),
+      responses: { 201: { description: 'Created' }, ...responses(401, 403, 422) },
+    },
+  },
+  '/api/v1/home-content/gallery/reorder': {
+    put: {
+      tags: ['Home Content'],
+      summary: 'Reorder school gallery slides',
+      description: roles('ADMIN', 'SUPER_ADMIN'),
+      requestBody: jsonBody(ref('ReorderGallerySlides')),
+      responses: responses(200, 401, 403, 422),
+    },
+  },
+  '/api/v1/home-content/gallery/{id}': {
+    parameters: [idParam()],
+    put: {
+      tags: ['Home Content'],
+      summary: 'Update school gallery slide',
+      description: roles('ADMIN', 'SUPER_ADMIN'),
+      requestBody: jsonBody(ref('UpdateGallerySlide')),
+      responses: responses(200, 401, 403, 404, 422),
+    },
+    delete: {
+      tags: ['Home Content'],
+      summary: 'Delete school gallery slide',
+      description: roles('ADMIN', 'SUPER_ADMIN'),
+      responses: responses(200, 401, 403, 404),
+    },
+  },
+  '/api/v1/home-content/gallery/{id}/toggle-hidden': {
+    parameters: [idParam()],
+    patch: {
+      tags: ['Home Content'],
+      summary: 'Toggle hidden status of gallery slide',
+      description: roles('ADMIN', 'SUPER_ADMIN'),
+      responses: responses(200, 401, 403, 404),
     },
   },
 

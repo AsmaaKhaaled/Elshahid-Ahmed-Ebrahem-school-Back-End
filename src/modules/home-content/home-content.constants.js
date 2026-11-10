@@ -10,3 +10,12 @@ export const DEFAULT_PRINCIPAL_CONTENT = {
   ],
 };
 
+export const DEFAULT_GALLERY_SLIDES = [
+  { order: 1, title: 'الأنشطة الطلابية', caption: 'طلابنا في أنشطة متنوعة تنمّي مواهبهم وروح الفريق.', src: 'images/gallery/activities.svg', hidden: false },
+  { order: 2, title: 'الأنشطة الرياضية', caption: 'دوري المدرسة والمسابقات الرياضية بين الفصول.', src: 'images/gallery/sports.svg', hidden: false },
+  { order: 3, title: 'المعامل والتجارب العلمية', caption: 'تعلّم بالتجربة داخل معامل العلوم والحاسب الآلي.', src: 'images/gallery/labs.svg', hidden: false },
+  { order: 4, title: 'الأنشطة الفنية والمسرحية', caption: 'معارض الرسم وعروض المسرح المدرسي في المناسبات.', src: 'images/gallery/arts.svg', hidden: false },
+  { order: 5, title: 'حفلات التكريم والتفوق', caption: 'تكريم الطلاب المتفوقين والمعلمين المتميزين.', src: 'images/gallery/honors.svg', hidden: false }
+];
+
+

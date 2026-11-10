@@ -27,13 +27,26 @@ export class UsersService {
   }
 
   static async createUser(data) {
-    // Not taken by any account: admin, teacher or student
-    await assertIdentityFree({ nationalId: data.nationalId, email: data.email?.toLowerCase() });
+    if (data.nationalId || data.email) {
+      await assertIdentityFree({ nationalId: data.nationalId, email: data.email?.toLowerCase() });
+    }
     return UserModel.create(data);
   }
 
   static async updateUser(id, data) {
-    await assertIdentityFree({ nationalId: data.nationalId, email: data.email?.toLowerCase() }, { model: 'user', id });
+    const existing = await UserModel.findById(id);
+    if (!existing) {
+      throw AppError.notFound(`User with id '${id}' not found`);
+    }
+
+    if (data.nationalId || data.email) {
+      const model = existing.role === 'TEACHER' ? 'teacher' : (existing.role === 'STUDENT' ? 'student' : 'user');
+      await assertIdentityFree(
+        { nationalId: data.nationalId, email: data.email?.toLowerCase() },
+        { model, id }
+      );
+    }
+
     const updated = await UserModel.update(id, data);
     if (!updated) {
       throw AppError.notFound(`User with id '${id}' not found`);

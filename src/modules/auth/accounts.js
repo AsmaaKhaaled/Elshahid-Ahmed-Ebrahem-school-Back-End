@@ -78,7 +78,11 @@ const queryOf = (model, { withPassword, withProfile }) => ({
 export const findAccount = async (role, id, { withPassword = false, withProfile = false } = {}) => {
   const model = modelOfRole(role);
   if (!model || !id) return null;
-  const row = await prisma[model].findUnique({ where: { id }, ...queryOf(model, { withPassword, withProfile }) });
+  let row = await prisma[model].findUnique({ where: { id }, ...queryOf(model, { withPassword, withProfile }) });
+  if (!row && model !== 'user') {
+    row = await prisma.user.findUnique({ where: { id } });
+    if (row && row.role === role) return toAccount('user', row);
+  }
   // A token's role must match the account's (an admin's id is never accepted as a teacher's)
   return row && row.role === role ? toAccount(model, row) : null;
 };
@@ -92,7 +96,7 @@ export const findAccountByIdentifier = async (identifier, { withPassword = false
   const value = identifier.trim();
   const email = value.toLowerCase();
   const lookups = [
-    ['user', { OR: [{ email }, { nationalId: value }], role: { in: ADMIN_ROLES } }],
+    ['user', { OR: [{ email }, { nationalId: value }] }],
     ['teacher', { OR: [{ nationalId: value }, { teacherCode: value }, { email }] }],
     ['student', { OR: [{ nationalId: value }, { studentCode: value }] }],
   ];
