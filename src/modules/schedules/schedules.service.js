@@ -7,6 +7,7 @@ import {
   PERIOD_ORDINALS,
   parseSlotKey,
   formatSlotKey,
+  weeklyPeriodLimit,
 } from './schedules.constants.js';
 import { AppError } from '../../shared/errors/app-error.js';
 import { assignmentsOf } from '../teachers/teachers.service.js';
@@ -188,7 +189,10 @@ export class SchedulesService {
       throw err;
     }
 
-    // 5. Atomic save in database transaction
+    // 5. A class can't get more weekly periods of a subject than the school's limit, whoever teaches them
+    await this.assertWeeklyLimits(termId, teacherId, requestedSlots);
+
+    // 6. Atomic save in database transaction
     const savedPeriods = await SchedulesModel.replaceTeacherSchedule(
       teacherId,
       termId,
@@ -203,6 +207,41 @@ export class SchedulesService {
       totalWeeklyPeriods: savedPeriods.length,
       classesCount: distinctClasses.size,
     };
+  }
+
+  /**
+   * Refuses a schedule that takes a class past its weekly periods of a subject,
+   * counting the periods other teachers already give that class.
+   */
+  static async assertWeeklyLimits(termId, teacherId, requestedSlots) {
+    const othersPeriods = await SchedulesModel.findOtherTeachersPeriods(termId, teacherId, [
+      ...new Set(requestedSlots.map((slot) => slot.classId)),
+    ]);
+
+    const othersCount = new Map();
+    for (const { classId, subject } of othersPeriods) {
+      const key = `${classId}|${subject}`;
+      othersCount.set(key, (othersCount.get(key) ?? 0) + 1);
+    }
+
+    const requested = new Map();
+    for (const slot of requestedSlots) {
+      const key = `${slot.classId}|${slot.subject}`;
+      const entry = requested.get(key) ?? { ...slot, count: othersCount.get(key) ?? 0 };
+      entry.count += 1;
+      requested.set(key, entry);
+    }
+
+    const exceeded = [...requested.values()].flatMap(({ className, subject, count }) => {
+      const limit = weeklyPeriodLimit(className, subject);
+      return limit !== undefined && count > limit ? [`${subject} لفصل ${className}: ${count} حصة والمسموح ${limit}`] : [];
+    });
+
+    if (exceeded.length) {
+      const err = AppError.conflict(`تم تجاوز عدد الحصص الأسبوعية المقرر: ${exceeded.join('، ')}`);
+      err.code = 'WEEKLY_PERIODS_EXCEEDED';
+      throw err;
+    }
   }
 
   /**

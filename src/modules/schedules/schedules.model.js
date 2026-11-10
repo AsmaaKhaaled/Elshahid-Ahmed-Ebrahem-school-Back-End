@@ -135,6 +135,22 @@ export class SchedulesModel {
   }
 
   /**
+   * Find the periods other teachers already give to the given classes in a term
+   */
+  static async findOtherTeachersPeriods(termId, teacherId, classIds) {
+    if (!classIds || classIds.length === 0) return [];
+
+    return prisma.timetablePeriod.findMany({
+      where: {
+        termId,
+        teacherId: { not: teacherId },
+        classId: { in: classIds },
+      },
+      select: { classId: true, subject: true },
+    });
+  }
+
+  /**
    * Replace a teacher's schedule atomically inside a transaction
    */
   static async replaceTeacherSchedule(teacherId, termId, newSlots) {

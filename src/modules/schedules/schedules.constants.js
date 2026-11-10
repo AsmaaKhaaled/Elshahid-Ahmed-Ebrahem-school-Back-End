@@ -34,6 +34,56 @@ export const PERIOD_ORDINALS = {
 
 export const BREAK_TIME = '10:25 - 10:55 AM';
 
+const RELIGION_PERIODS = {
+  'التربية الدينية': 3,
+  'التربية الدينية الإسلامية': 3,
+  'التربية الدينية المسيحية': 3,
+};
+
+/**
+ * Most periods a class may have per week in each subject, by grade (same as the frontend's WEEKLY_PERIOD_LIMITS).
+ * Muslim and Christian students study religion at the same time, so each religion has its own limit.
+ */
+export const WEEKLY_PERIOD_LIMITS = {
+  1: {
+    'اللغة العربية': 8,
+    'الرياضيات': 6,
+    'اللغة الإنجليزية': 5,
+    'الدراسات الاجتماعية': 4,
+    'العلوم': 4,
+    ...RELIGION_PERIODS,
+    'الحاسب الآلي': 1,
+    'التربية الفنية': 1,
+    'التربية الرياضية': 1,
+  },
+  2: {
+    'اللغة العربية': 8,
+    'الرياضيات': 6,
+    'اللغة الإنجليزية': 6,
+    'الدراسات الاجتماعية': 4,
+    'العلوم': 4,
+    ...RELIGION_PERIODS,
+    'الحاسب الآلي': 1,
+    'التربية الفنية': 1,
+    'التربية الرياضية': 1,
+  },
+  3: {
+    'اللغة العربية': 8,
+    'الرياضيات': 6,
+    'اللغة الإنجليزية': 6,
+    'الدراسات الاجتماعية': 4,
+    'العلوم': 4,
+    ...RELIGION_PERIODS,
+    'الحاسب الآلي': 1,
+    'التربية الفنية': 1,
+    'التربية الرياضية': 0,
+  },
+};
+
+/** The weekly limit of a subject in a class named like "2/3"; undefined when the school set none. */
+export const weeklyPeriodLimit = (className, subject) =>
+  WEEKLY_PERIOD_LIMITS[String(className).split('/')[0]]?.[subject];
+
 /**
  * Convert slot key (e.g. "0-0" or "0-1") to { dayOfWeek, period }
  * Slot key in frontend is `day-periodIndex` (0-0 = Sunday Period 1, 0-1 = Sunday Period 2)

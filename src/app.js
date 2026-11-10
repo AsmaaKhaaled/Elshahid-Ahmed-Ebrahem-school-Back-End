@@ -25,6 +25,7 @@ import announcementsRoutes from './modules/announcements/announcements.routes.js
 import adminRoutes from './modules/admin/admin.routes.js';
 import teacherAttendanceRoutes from './modules/teacher-attendance/teacher-attendance.routes.js';
 import curriculaRoutes from './modules/curricula/curricula.routes.js';
+import assignmentsRoutes from './modules/assignments/assignments.routes.js';
 import honorRollRoutes from './modules/honor-roll/honor-roll.routes.js';
 import homeContentRoutes from './modules/home-content/home-content.routes.js';
 
@@ -82,6 +83,7 @@ app.get('/', (req, res) => {
         'announcements',
         'teacher-attendance',
         'curricula',
+        'assignments',
         'honor-roll',
         'home-content',
       ],
@@ -117,6 +119,7 @@ app.use(`${API_PREFIX}/grades`, gradesRoutes);
 app.use(`${API_PREFIX}/announcements`, announcementsRoutes);
 app.use(`${API_PREFIX}/teacher-attendance`, teacherAttendanceRoutes);
 app.use(`${API_PREFIX}/curricula`, curriculaRoutes);
+app.use(`${API_PREFIX}/assignments`, assignmentsRoutes);
 app.use(`${API_PREFIX}/honor-roll`, honorRollRoutes);
 app.use(`${API_PREFIX}/home-content`, homeContentRoutes);
 app.use(`${API_PREFIX}/admin/admins`, adminRoutes);

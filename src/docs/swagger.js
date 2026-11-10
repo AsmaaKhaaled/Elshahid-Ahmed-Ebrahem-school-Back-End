@@ -893,6 +893,133 @@ const paths = {
     },
   },
 
+  // Assignments (الواجبات والتكليفات المدرسية)
+  '/api/v1/assignments': {
+    get: {
+      tags: ['Assignments'],
+      summary: 'Assignments I may see (paginated, newest first)',
+      description: 'A teacher gets their own, a student their class, the administration all.',
+      parameters: [queryParam('page', 'Page number'), queryParam('limit', 'Page size (max 100)'), queryParam('search', 'Search in titles'), queryParam('subject', 'Arabic subject name')],
+      responses: responses(200, 401, 403, 422),
+    },
+    post: {
+      tags: ['Assignments'],
+      summary: 'Publish an assignment to my classes (one assignment per class)',
+      description: roles('TEACHER'),
+      requestBody: jsonBody({
+        type: 'object',
+        required: ['title', 'subject', 'sections', 'dueDate'],
+        properties: {
+          title: { type: 'string', maxLength: 150 },
+          description: { type: 'string', maxLength: 3000 },
+          subject: { type: 'string' },
+          sections: { type: 'array', items: { type: 'string', example: '3/2' }, minItems: 1, maxItems: 12 },
+          dueDate: { type: 'string', format: 'date-time' },
+          maxScore: { type: 'number', minimum: 1, maximum: 100, default: 10 },
+        },
+      }),
+      responses: responses(201, 400, 401, 403, 422),
+    },
+  },
+  '/api/v1/assignments/{id}': {
+    get: {
+      tags: ['Assignments'],
+      summary: 'One assignment with its attachments',
+      parameters: [idParam()],
+      responses: responses(200, 401, 403, 404),
+    },
+    put: {
+      tags: ['Assignments'],
+      summary: 'Edit my assignment (its class stays the same)',
+      description: roles('TEACHER'),
+      parameters: [idParam()],
+      requestBody: jsonBody({
+        type: 'object',
+        required: ['title', 'subject', 'dueDate'],
+        properties: {
+          title: { type: 'string', maxLength: 150 },
+          description: { type: 'string', maxLength: 3000 },
+          subject: { type: 'string' },
+          dueDate: { type: 'string', format: 'date-time' },
+          maxScore: { type: 'number', minimum: 1, maximum: 100 },
+        },
+      }),
+      responses: responses(200, 400, 401, 403, 404, 422),
+    },
+    delete: {
+      tags: ['Assignments'],
+      summary: 'Delete my assignment and its files',
+      description: roles('TEACHER'),
+      parameters: [idParam()],
+      responses: responses(200, 401, 403, 404),
+    },
+  },
+  '/api/v1/assignments/{id}/attachments': {
+    post: {
+      tags: ['Assignments'],
+      summary: 'Attach a file — multipart `file` (max 20MB), `alsoFor` = my same assignment in other classes',
+      description: roles('TEACHER'),
+      parameters: [idParam()],
+      responses: responses(201, 400, 401, 403, 404, 422),
+    },
+  },
+  '/api/v1/assignments/{id}/submission': {
+    post: {
+      tags: ['Assignments'],
+      summary: 'Hand in (or replace) my answer — multipart `files` (up to 10), `note`, `keepFileIds`',
+      description: roles('STUDENT'),
+      parameters: [idParam()],
+      responses: responses(200, 400, 401, 403, 404, 422),
+    },
+  },
+  '/api/v1/assignments/{id}/submissions': {
+    get: {
+      tags: ['Assignments'],
+      summary: "An assignment's submissions, newest first (its teacher & the administration)",
+      parameters: [idParam()],
+      responses: responses(200, 401, 403, 404),
+    },
+  },
+  '/api/v1/assignments/{id}/submissions/{submissionId}/grade': {
+    put: {
+      tags: ['Assignments'],
+      summary: 'Mark a submission (0 to the final score)',
+      description: roles('TEACHER'),
+      parameters: [idParam(), idParam('submissionId', 'Submission ID')],
+      requestBody: jsonBody({
+        type: 'object',
+        required: ['score'],
+        properties: { score: { type: 'number', minimum: 0 }, feedback: { type: 'string', maxLength: 1000 } },
+      }),
+      responses: responses(200, 400, 401, 403, 404, 422),
+    },
+  },
+  '/api/v1/assignments/{id}/submissions/{submissionId}/files/{fileId}/download': {
+    get: {
+      tags: ['Assignments'],
+      summary: 'Download a file of a submission (its student, the teacher, the administration)',
+      parameters: [idParam(), idParam('submissionId', 'Submission ID'), idParam('fileId', 'File ID')],
+      responses: responses(200, 401, 403, 404),
+    },
+  },
+  '/api/v1/assignments/{id}/attachments/{attachmentId}': {
+    delete: {
+      tags: ['Assignments'],
+      summary: 'Remove an attached file',
+      description: roles('TEACHER'),
+      parameters: [idParam(), idParam('attachmentId', 'Attachment ID')],
+      responses: responses(200, 401, 403, 404),
+    },
+  },
+  '/api/v1/assignments/{id}/attachments/{attachmentId}/download': {
+    get: {
+      tags: ['Assignments'],
+      summary: 'Download an attached file',
+      parameters: [idParam(), idParam('attachmentId', 'Attachment ID')],
+      responses: responses(200, 401, 403, 404),
+    },
+  },
+
   // Attendance
   ...crud({
     tag: 'Attendance',

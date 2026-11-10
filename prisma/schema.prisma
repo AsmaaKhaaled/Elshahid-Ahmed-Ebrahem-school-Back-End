@@ -102,6 +102,7 @@ model Student {
   grades            Grade[]
   announcementReads AnnouncementRead[]
   honorEntries      HonorRoll[]
+  assignmentSubmissions AssignmentSubmission[]
 
   @@index([classId])
   @@index([gradeLevel])
@@ -152,6 +153,7 @@ model Teacher {
   timetablePeriods  TimetablePeriod[]
   attendanceRecords TeacherAttendance[]
   curricula         Curriculum[]
+  assignments       Assignment[]
 
   // What the teacher did
   recordedAttendances   Attendance[]       @relation("AttendanceTeacherRecorder")
@@ -191,6 +193,7 @@ model Class {
   attendances      Attendance[]
   exams            Exam[]
   announcements    Announcement[]
+  assignments      Assignment[]
 
   @@map("classes")
 }
@@ -737,3 +740,93 @@ model HomeContent {
 }
 
 
+
+// ==========================================
+// 17. Assignments (الواجبات والتكليفات المدرسية)
+// ==========================================
+// A teacher publishes an assignment to their classes (one row per class) with optional files;
+// the students of that class see it and download the files.
+
+model Assignment {
+  id          String   @id @default(cuid())
+  teacherId   String
+  classId     String
+  // Arabic subject name, as in Teacher.teachingSubjects (e.g. "الرياضيات")
+  subject     String
+  title       String
+  description String   @default("")
+  dueDate     DateTime
+  maxScore    Float    @default(10)
+  // false = solved outside the platform (e.g. in the notebook): students can't hand it in here
+  requiresSubmission Boolean @default(true)
+  publishedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  teacher     Teacher                @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  class       Class                  @relation(fields: [classId], references: [id], onDelete: Cascade)
+  attachments AssignmentAttachment[]
+  submissions AssignmentSubmission[]
+
+  @@index([teacherId, publishedAt])
+  @@index([classId, publishedAt])
+  @@index([publishedAt])
+  @@map("assignments")
+}
+
+model AssignmentAttachment {
+  id           String   @id @default(cuid())
+  assignmentId String
+  fileName     String
+  fileSize     Int
+  fileType     String?
+  // Where the file is kept, relative to the uploads folder.
+  // An assignment published to several classes shares one stored file between its rows.
+  fileKey      String
+  uploadedAt   DateTime @default(now())
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+
+  @@index([assignmentId, uploadedAt])
+  @@index([fileKey])
+  @@map("assignment_attachments")
+}
+
+// A student's answer to an assignment and the teacher's marking. Handing in again replaces it.
+// Not linked to the gradebook (grades): that one stays filled by hand and from Excel.
+model AssignmentSubmission {
+  id           String    @id @default(cuid())
+  assignmentId String
+  studentId    String
+  note         String    @default("")
+  submittedAt  DateTime  @default(now())
+  // null until the teacher marks it
+  score        Float?
+  feedback     String    @default("")
+  gradedAt     DateTime?
+  updatedAt    DateTime  @updatedAt
+
+  assignment Assignment               @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  student    Student                  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  files      AssignmentSubmissionFile[]
+
+  @@unique([assignmentId, studentId])
+  @@index([assignmentId, submittedAt])
+  @@index([studentId])
+  @@map("assignment_submissions")
+}
+
+model AssignmentSubmissionFile {
+  id           String   @id @default(cuid())
+  submissionId String
+  fileName     String
+  fileSize     Int
+  fileType     String?
+  // Where the file is kept, relative to the uploads folder
+  fileKey      String
+  uploadedAt   DateTime @default(now())
+
+  submission AssignmentSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([submissionId, uploadedAt])
+  @@map("assignment_submission_files")
+}
