@@ -27,6 +27,7 @@ import teacherAttendanceRoutes from './modules/teacher-attendance/teacher-attend
 import curriculaRoutes from './modules/curricula/curricula.routes.js';
 import honorRollRoutes from './modules/honor-roll/honor-roll.routes.js';
 import homeContentRoutes from './modules/home-content/home-content.routes.js';
+import academicYearRoutes from './modules/academic-year/academic-year.routes.js';
 
 const app = express();
 
@@ -84,6 +85,7 @@ app.get('/', (req, res) => {
         'curricula',
         'honor-roll',
         'home-content',
+        'academic-year',
       ],
       timestamp: new Date().toISOString(),
     },
@@ -119,6 +121,7 @@ app.use(`${API_PREFIX}/teacher-attendance`, teacherAttendanceRoutes);
 app.use(`${API_PREFIX}/curricula`, curriculaRoutes);
 app.use(`${API_PREFIX}/honor-roll`, honorRollRoutes);
 app.use(`${API_PREFIX}/home-content`, homeContentRoutes);
+app.use(`${API_PREFIX}/academic-year`, academicYearRoutes);
 app.use(`${API_PREFIX}/admin/admins`, adminRoutes);
 app.use(`${API_PREFIX}/admin`, adminRoutes);
 

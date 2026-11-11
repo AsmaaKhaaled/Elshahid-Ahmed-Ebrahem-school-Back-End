@@ -178,6 +178,10 @@ model Class {
   capacity          Int      @default(40)
   classTeacherId    String?
   isActive          Boolean  @default(true)
+  
+  // سجل تعيين رواد الفصل التاريخي والأسباب
+  advisorHistory    Json?    @default("[]")
+
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
@@ -752,5 +756,27 @@ model HomeGallerySlide {
   @@index([hidden])
   @@map("home_gallery_slides")
 }
+
+// ==========================================
+// 17. Academic Year & Terms (العام والفصل الدراسي)
+// ==========================================
+
+model AcademicTerm {
+  id               String    @id // مثل: "2026-2027-T1", "2026-2027-T2"
+  year             String    // مثل: "2026/2027"
+  term             Int       // 1 أو 2
+  label            String    // مثل: "الفصل الدراسي الأول 2026/2027"
+  isCurrent        Boolean   @default(false)
+  startedAt        DateTime? @db.Date // تاريخ البداية الفعلي
+  endedAt          DateTime? @db.Date // تاريخ النهاية الفعلي
+  plannedStartDate DateTime? @db.Date // تاريخ البداية المتوقع من خريطة الوزارة
+  plannedEndDate   DateTime? @db.Date // تاريخ النهاية المتوقع من خريطة الوزارة
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([year, term])
+  @@map("academic_terms")
+}
+
 
 
