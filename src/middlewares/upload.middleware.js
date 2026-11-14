@@ -39,7 +39,7 @@ export const MAX_DOCUMENT_MB = 20;
 // Same list as the frontend's FILE_ACCEPT; no video / audio (they can't be stored & streamed yet)
 const DOCUMENT_EXTENSIONS = ['.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx', '.jpg', '.jpeg', '.png', '.zip'];
 
-const documentMulter = (folder, maxFiles) => {
+const documentMulter = (folder, maxFiles, maxFields = 20) => {
   const dir = path.join(env.UPLOAD_DIR, folder);
   return multer({
     storage: multer.diskStorage({
@@ -53,7 +53,7 @@ const documentMulter = (folder, maxFiles) => {
     }),
     // Arabic file names arrive as UTF-8
     defParamCharset: 'utf8',
-    limits: { fileSize: MAX_DOCUMENT_MB * 1024 * 1024, files: maxFiles, fields: 20 },
+    limits: { fileSize: MAX_DOCUMENT_MB * 1024 * 1024, files: maxFiles, fields: maxFields },
     fileFilter: (req, file, cb) => {
       const ext = path.extname(file.originalname).toLowerCase();
       if (DOCUMENT_EXTENSIONS.includes(ext)) return cb(null, true);
@@ -84,8 +84,11 @@ const runDocumentUpload = (upload, tooManyMessage) => (req, res, next) =>
 export const uploadDocument = (folder) =>
   runDocumentUpload(documentMulter(folder, 1).single('file'), 'ارفع ملفًا واحدًا فقط في المرة');
 
-/** Like uploadDocument, for several files of one field: they arrive in req.files. */
-export const uploadDocuments = (folder, field, maxFiles) =>
-  runDocumentUpload(documentMulter(folder, maxFiles).array(field, maxFiles), `يمكن رفع ${maxFiles} ملفات على الأكثر`);
+/**
+ * Like uploadDocument, for several files of one field: they arrive in req.files.
+ * maxFields: the text fields allowed with them (a list sent as a form field counts once per item).
+ */
+export const uploadDocuments = (folder, field, maxFiles, maxFields) =>
+  runDocumentUpload(documentMulter(folder, maxFiles, maxFields).array(field, maxFiles), `يمكن رفع ${maxFiles} ملفات على الأكثر`);
 
 export default uploadExcelMiddleware;

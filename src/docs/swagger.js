@@ -317,25 +317,19 @@ const schemas = {
     additionalProperties: true,
   },
 
-  // Materials
-  CreateMaterial: {
+  // Materials: sent as multipart/form-data (with the files); a list field is repeated once per item
+  SaveMaterial: {
     type: 'object',
-    required: ['title', 'subjectId', 'fileUrl'],
+    required: ['title', 'subject', 'sections'],
     properties: {
-      title: { type: 'string' },
-      type: { type: 'string', enum: ['SYLLABUS_PDF', 'MONTHLY_PLAN', 'WORKSHEET', 'REFERENCE'] },
-      subjectId: { type: 'string' },
-      fileUrl: { type: 'string' },
+      title: { type: 'string', maxLength: 150 },
+      description: { type: 'string', maxLength: 3000 },
+      subject: { type: 'string', example: 'الرياضيات' },
+      sections: { type: 'array', items: { type: 'string', example: '3/2' }, minItems: 1, maxItems: 12 },
+      link: { type: 'string', format: 'uri', description: 'A video or page link (http/https)' },
+      keepFileIds: { type: 'array', items: { type: 'string' }, description: 'Editing only: the files to keep (the others are removed)' },
+      files: { type: 'array', items: { type: 'string', format: 'binary' }, maxItems: 10, description: 'Up to 10 files, 20MB each' },
     },
-    additionalProperties: true,
-  },
-  UpdateMaterial: {
-    type: 'object',
-    properties: {
-      title: { type: 'string' },
-      type: { type: 'string', enum: ['SYLLABUS_PDF', 'MONTHLY_PLAN', 'WORKSHEET', 'REFERENCE'] },
-    },
-    additionalProperties: true,
   },
 
   // Attendance
@@ -757,22 +751,59 @@ const paths = {
     },
   },
 
-  // Materials
-  ...crud({
-    tag: 'Materials',
-    base: '/api/v1/materials',
-    name: 'material',
-    createSchema: 'CreateMaterial',
-    updateSchema: 'UpdateMaterial',
-    access: { list: ALL, get: ALL, create: ADMIN_TEACHER, update: ADMIN_TEACHER, remove: ADMIN_TEACHER },
-    listQuery: [
-      queryParam('page', 'Page number (default 1)', { type: 'integer', minimum: 1 }),
-      queryParam('limit', 'Page size (default 20, max 100)', { type: 'integer', minimum: 1, maximum: 100 }),
-      queryParam('subjectId', 'Subject ID'),
-      queryParam('classId', 'Class ID (also returns materials for every class)'),
-      queryParam('search', 'Title or description'),
-    ],
-  }),
+  // Materials (المواد والملفات التعليمية)
+  '/api/v1/materials': {
+    get: {
+      tags: ['Materials'],
+      summary: 'Materials I may see (paginated, newest first) and the count per subject',
+      description: `${roles('TEACHER', 'ADMIN', 'SUPER_ADMIN', 'STUDENT')}\n\nA teacher gets their own, a student their class's, the administration all.`,
+      parameters: [
+        queryParam('page', 'Page number (default 1)', { type: 'integer', minimum: 1 }),
+        queryParam('limit', 'Page size (default 20, max 100)', { type: 'integer', minimum: 1, maximum: 100 }),
+        queryParam('search', 'Title or description'),
+        queryParam('subject', 'Arabic subject name'),
+      ],
+      responses: responses(200, 401, 403, 422),
+    },
+    post: {
+      tags: ['Materials'],
+      summary: "Publish a material to my classes (their students see it right away): files and / or a link",
+      description: roles('TEACHER'),
+      requestBody: { required: true, content: { 'multipart/form-data': { schema: ref('SaveMaterial') } } },
+      responses: responses(201, 400, 401, 403, 422),
+    },
+  },
+  '/api/v1/materials/{id}': {
+    get: {
+      tags: ['Materials'],
+      summary: 'One material with its files',
+      parameters: [idParam()],
+      responses: responses(200, 401, 403, 404),
+    },
+    put: {
+      tags: ['Materials'],
+      summary: 'Edit my material: its fields, classes and files (`keepFileIds` + new `files`)',
+      description: roles('TEACHER'),
+      parameters: [idParam()],
+      requestBody: { required: true, content: { 'multipart/form-data': { schema: ref('SaveMaterial') } } },
+      responses: responses(200, 400, 401, 403, 404, 422),
+    },
+    delete: {
+      tags: ['Materials'],
+      summary: 'Delete my material and its files',
+      description: roles('TEACHER'),
+      parameters: [idParam()],
+      responses: responses(200, 401, 403, 404),
+    },
+  },
+  '/api/v1/materials/{id}/files/{fileId}/download': {
+    get: {
+      tags: ['Materials'],
+      summary: "Download a material's file",
+      parameters: [idParam(), idParam('fileId', 'File ID')],
+      responses: responses(200, 401, 403, 404),
+    },
+  },
 
   // Curricula (المناهج والمواد الدراسية)
   '/api/v1/curricula': {

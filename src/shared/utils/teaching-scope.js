@@ -37,6 +37,30 @@ export const teachingScopeOf = async (user) => {
 
 export const teachesSubjectInClass = (scope, subjectName, classId) => scope.bySubject.get(subjectName)?.has(classId) ?? false;
 
+/** The classes this teacher teaches this subject to, as the admin assigned them (assignments, materials). */
+export const classesTeachingSubject = async (teacherId, subject) => {
+  const [teacher, classes] = await Promise.all([
+    prisma.teacher.findUnique({
+      where: { id: teacherId },
+      select: { teachingSubjects: true, teachingAssignments: true, specialization: true },
+    }),
+    prisma.class.findMany({
+      where: { isActive: true, OR: [{ assignedTeachers: { some: { id: teacherId } } }, { classTeacherId: teacherId }] },
+      select: { id: true, name: true },
+    }),
+  ]);
+  if (!teacher) throw AppError.forbidden('هذا الحساب غير مرتبط بملف معلم');
+
+  const subjects = teacher.teachingSubjects.length ? teacher.teachingSubjects : [teacher.specialization];
+  if (!subjects.includes(subject)) throw AppError.badRequest('هذه المادة ليست من المواد التي تدرّسها');
+
+  // All the teacher's classes for records saved before per-subject classes existed
+  const names = assignmentsOf(teacher, classes.map((cls) => cls.name)).find((a) => a.subject === subject)?.classes;
+  const taught = names?.length ? classes.filter((cls) => names.includes(cls.name)) : classes;
+  if (!taught.length) throw AppError.badRequest('لا توجد فصول مسجلة لك بعد، اطلب من الإدارة تعيين فصولك');
+  return taught;
+};
+
 export const isAdminRole = (user) => user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
 
 /** The class a signed-in student is enrolled in (null if none). */

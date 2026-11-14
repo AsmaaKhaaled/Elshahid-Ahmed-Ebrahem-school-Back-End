@@ -1,127 +1,201 @@
 import { prisma } from '../../config/database.js';
-import { MaterialModel } from './materials.model.js';
 import { AppError } from '../../shared/errors/app-error.js';
+import { removeStoredFiles, storageKey } from '../../shared/utils/file-storage.js';
 import { buildPaginationMeta, parsePagination } from '../../shared/utils/pagination.js';
-import { studentClassIdOf, teachesSubjectInClass, teachingScopeOf } from '../../shared/utils/teaching-scope.js';
+import { classesTeachingSubject } from '../../shared/utils/teaching-scope.js';
+import { MAX_FILES_PER_MATERIAL, keepFileIdsOf, linkOf, sectionsOf } from './materials.validation.js';
 
-// ---- A teacher sees & uploads materials only for a subject they teach, in the classes they teach it to, and edits /
-// ---- deletes only their own. A student sees their class's materials (and school-wide ones). The administration: all.
+const DEFAULT_PAGE_SIZE = 20;
+const MAX_PAGE_SIZE = 100;
 
-const UPDATABLE_FIELDS = ['title', 'type', 'subjectId', 'classId', 'month', 'fileUrl', 'fileName', 'fileSize', 'description'];
+// ---- Who is asking ----
+// A teacher works on their own materials; a student sees their class's as soon as they're saved;
+// the administration reads all.
 
-const assertTeaches = async (user, subjectId, classId) => {
-  const scope = await teachingScopeOf(user);
-  if (!scope) return;
-  // A material without a class goes to the whole school: the administration's
-  if (!classId) throw AppError.forbidden('حدد الفصل: لا يمكن للمعلم رفع مادة لكل فصول المدرسة');
-  const [subject, cls] = await Promise.all([
-    prisma.subject.findUnique({ where: { id: subjectId }, select: { nameArabic: true } }),
-    prisma.class.findUnique({ where: { id: classId }, select: { name: true } }),
-  ]);
-  if (!subject || !cls || !teachesSubjectInClass(scope, subject.nameArabic, classId)) {
-    throw AppError.forbidden(
-      subject && cls
-        ? `لا تدرّس مادة ${subject.nameArabic} لفصل ${cls.name}`
-        : 'لا يمكنك رفع مواد إلا لمادتك في فصولك'
-    );
-  }
+const isAdmin = (user) => user.role === 'ADMIN' || user.role === 'SUPER_ADMIN';
+
+const visibleWhere = (viewer) => {
+  if (viewer.teacherId) return { teacherId: viewer.teacherId };
+  // A student without a class sees nothing
+  if (viewer.classId !== undefined) return { classes: { some: { id: viewer.classId ?? '__none__' } } };
+  return {};
 };
 
-// A teacher manages only the materials they uploaded
-const assertCanManage = async (user, material) => {
-  if (user?.role === 'TEACHER' && material.uploadedByTeacherId !== user.id) {
-    throw AppError.forbidden('لا يمكنك تعديل أو حذف مادة رفعها شخص آخر');
-  }
+const MATERIAL_INCLUDE = {
+  teacher: { select: { fullNameArabic: true } },
+  classes: { select: { name: true }, orderBy: { name: 'asc' } },
+  files: {
+    orderBy: [{ uploadedAt: 'asc' }, { id: 'asc' }],
+    select: { id: true, fileName: true, fileSize: true, fileType: true },
+  },
 };
 
-/**
- * Which materials the viewer may see, as a Prisma condition:
- * - a teacher: their subjects only, for the classes they teach them to (and that subject's school-wide ones)
- * - a student: their class's materials and the school-wide ones (no class)
- * - the administration: all
- */
-const visibleMaterialsWhere = async (user) => {
-  if (user?.role === 'STUDENT') {
-    return { OR: [{ classId: studentClassIdOf(user) ?? '__none__' }, { classId: null }] };
-  }
-  const scope = await teachingScopeOf(user);
-  if (!scope) return {};
-  // An empty OR matches nothing
-  return {
-    OR: [...scope.bySubject].map(([subject, classIds]) => ({
-      subject: { nameArabic: subject },
-      OR: [{ classId: { in: [...classIds] } }, { classId: null }],
-    })),
-  };
-};
+const toFileDto = (file) => ({ id: file.id, name: file.fileName, size: file.fileSize, type: file.fileType });
+
+const toDto = (row) => ({
+  id: row.id,
+  title: row.title,
+  description: row.description,
+  subject: row.subject,
+  teacherId: row.teacherId,
+  teacherName: row.teacher.fullNameArabic,
+  sections: row.classes.map((cls) => cls.name),
+  files: row.files.map(toFileDto),
+  link: row.link,
+  publishedAt: row.publishedAt,
+  updatedAt: row.updatedAt,
+});
+
+const uploadedFileData = (upload) => ({
+  fileKey: storageKey(upload),
+  fileName: upload.originalname.slice(0, 255),
+  fileSize: upload.size,
+  fileType: upload.mimetype,
+});
 
 export class MaterialsService {
-  /** One page (page & limit, default 20, at most 100) instead of the whole table. */
-  static async getMaterials(query, user) {
-    const { page, limit, skip, take } = parsePagination(query, 20, 100);
-    const { total, items } = await MaterialModel.findPage(query, { skip, take }, await visibleMaterialsWhere(user));
-    return { items, meta: buildPaginationMeta({ total, page, limit }) };
-  }
-
-  static async getMaterialById(id, user) {
-    const visible = await prisma.material.findFirst({ where: { id, ...(await visibleMaterialsWhere(user)) }, select: { id: true } });
-    const material = visible && (await MaterialModel.findById(id));
-    if (!material) {
-      throw AppError.notFound(`Material with id '${id}' not found`);
+  /** The viewer of a request: { teacherId } | { classId } (a student) | {} (the administration). */
+  static viewerOf(user) {
+    if (user.role === 'TEACHER') {
+      if (!user.teacherProfile?.id) throw AppError.forbidden('هذا الحساب غير مرتبط بملف معلم');
+      return { teacherId: user.teacherProfile.id };
     }
-    return material;
+    if (user.role === 'STUDENT') return { classId: user.studentProfile?.classId ?? null };
+    if (isAdmin(user)) return {};
+    throw AppError.forbidden('غير مصرح لك بالوصول لهذا القسم');
   }
 
-  static async getMaterialsBySubject(subjectId) {
-    return MaterialModel.findAll({ subjectId });
+  // ---------- Reading ----------
+
+  /** One page of the materials the viewer may see, newest first, and how many there are of each subject. */
+  static async list(viewer, query) {
+    const { page, limit, skip, take } = parsePagination(query, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
+    const search = typeof query.search === 'string' ? query.search.trim() : '';
+    const visible = visibleWhere(viewer);
+    const where = {
+      ...visible,
+      ...(query.subject && { subject: query.subject }),
+      ...(search && {
+        OR: [
+          { title: { contains: search, mode: 'insensitive' } },
+          { description: { contains: search, mode: 'insensitive' } },
+        ],
+      }),
+    };
+    const [total, rows, bySubject] = await Promise.all([
+      prisma.material.count({ where }),
+      prisma.material.findMany({
+        where,
+        include: MATERIAL_INCLUDE,
+        orderBy: [{ publishedAt: 'desc' }, { id: 'asc' }],
+        skip,
+        take,
+      }),
+      // The subject tabs: every subject the viewer has materials in, whatever the page
+      prisma.material.groupBy({ by: ['subject'], where: visible, _count: { _all: true }, orderBy: { subject: 'asc' } }),
+    ]);
+    return {
+      materials: rows.map(toDto),
+      subjects: bySubject.map((group) => ({ subject: group.subject, count: group._count._all })),
+      meta: buildPaginationMeta({ total, page, limit }),
+    };
   }
 
-  static async getMaterialsByClass(classId) {
-    return MaterialModel.findAll({ classId });
+  static async getById(viewer, id) {
+    const row = await prisma.material.findFirst({ where: { id, ...visibleWhere(viewer) }, include: MATERIAL_INCLUDE });
+    if (!row) throw AppError.notFound('المادة غير موجودة');
+    return toDto(row);
   }
 
-  static async createMaterial(data, user) {
-    await assertTeaches(user, data.subjectId, data.classId);
-    return MaterialModel.create(data);
-  }
-
-  static async updateMaterial(id, data, user) {
-    const material = await prisma.material.findUnique({
-      where: { id },
-      select: { uploadedByTeacherId: true, subjectId: true, classId: true },
+  /** What to stream for a file download, if the viewer may have it. */
+  static async fileForDownload(viewer, id, fileId) {
+    const file = await prisma.materialFile.findFirst({
+      where: { id: fileId, materialId: id, material: visibleWhere(viewer) },
+      select: { fileKey: true, fileName: true, fileType: true },
     });
-    if (!material) {
-      throw AppError.notFound(`Material with id '${id}' not found`);
-    }
-    await assertCanManage(user, material);
-
-    // Only the material's own fields (not who uploaded it)
-    const changes = Object.fromEntries(UPDATABLE_FIELDS.filter((key) => data[key] !== undefined).map((key) => [key, data[key]]));
-    // Moving it to another subject / class: that one must be the teacher's too
-    if (changes.subjectId !== undefined || changes.classId !== undefined) {
-      await assertTeaches(user, changes.subjectId ?? material.subjectId, changes.classId !== undefined ? changes.classId : material.classId);
-    }
-
-    const updated = await MaterialModel.update(id, changes);
-    if (!updated) {
-      throw AppError.notFound(`Material with id '${id}' not found`);
-    }
-    return updated;
+    if (!file) throw AppError.notFound('الملف غير موجود');
+    return { key: file.fileKey, name: file.fileName, type: file.fileType };
   }
 
-  static async deleteMaterial(id, user) {
-    const material = await prisma.material.findUnique({ where: { id }, select: { uploadedByTeacherId: true } });
-    if (!material) {
-      throw AppError.notFound(`Material with id '${id}' not found`);
+  // ---------- The teacher's own materials ----------
+
+  /** Publishes to the chosen classes: their students see it right away. */
+  static async create(teacherId, body, uploads = []) {
+    const classIds = await this.classIdsFor(teacherId, body);
+    if (!uploads.length && !linkOf(body)) throw AppError.badRequest('ارفع ملفًا أو أضف رابطًا');
+
+    const row = await prisma.material.create({
+      data: {
+        ...this.fields(body),
+        teacherId,
+        classes: { connect: classIds.map((id) => ({ id })) },
+        files: { create: uploads.map(uploadedFileData) },
+      },
+      include: MATERIAL_INCLUDE,
+    });
+    return toDto(row);
+  }
+
+  /** Saves the edits. keepFileIds: the material's files to keep; uploads: the files added. */
+  static async update(teacherId, id, body, uploads = []) {
+    const current = await prisma.material.findFirst({
+      where: { id, teacherId },
+      select: { files: { select: { id: true, fileKey: true } } },
+    });
+    if (!current) throw AppError.notFound('المادة غير موجودة ضمن موادك');
+    const classIds = await this.classIdsFor(teacherId, body);
+
+    const keepIds = new Set(keepFileIdsOf(body));
+    const kept = current.files.filter((file) => keepIds.has(file.id));
+    const dropped = current.files.filter((file) => !keepIds.has(file.id));
+    if (!kept.length && !uploads.length && !linkOf(body)) throw AppError.badRequest('ارفع ملفًا أو أضف رابطًا');
+    if (kept.length + uploads.length > MAX_FILES_PER_MATERIAL) {
+      throw AppError.badRequest(`يمكن إرفاق ${MAX_FILES_PER_MATERIAL} ملفات على الأكثر`);
     }
-    await assertCanManage(user, material);
-    const deleted = await MaterialModel.delete(id);
-    if (!deleted) {
-      throw AppError.notFound(`Material with id '${id}' not found`);
-    }
-    return true;
+
+    const row = await prisma.material.update({
+      where: { id },
+      data: {
+        ...this.fields(body),
+        classes: { set: classIds.map((classId) => ({ id: classId })) },
+        files: { deleteMany: { id: { in: dropped.map((file) => file.id) } }, create: uploads.map(uploadedFileData) },
+      },
+      include: MATERIAL_INCLUDE,
+    });
+    await removeStoredFiles(dropped.map((file) => file.fileKey));
+    return toDto(row);
+  }
+
+  /** Deletes the material and its stored files. */
+  static async remove(teacherId, id) {
+    const current = await prisma.material.findFirst({
+      where: { id, teacherId },
+      select: { files: { select: { fileKey: true } } },
+    });
+    if (!current) throw AppError.notFound('المادة غير موجودة ضمن موادك');
+    await prisma.material.delete({ where: { id } });
+    await removeStoredFiles(current.files.map((file) => file.fileKey));
+  }
+
+  // ---------- helpers ----------
+
+  static fields(body) {
+    return {
+      title: body.title.trim(),
+      description: (body.description ?? '').trim(),
+      subject: body.subject.trim(),
+      link: linkOf(body) || null,
+    };
+  }
+
+  /** The ids of the chosen classes: each must be one the teacher teaches this subject to. */
+  static async classIdsFor(teacherId, body) {
+    const taught = await classesTeachingSubject(teacherId, body.subject.trim());
+    const sections = [...new Set(sectionsOf(body))];
+    const foreign = sections.filter((section) => !taught.some((cls) => cls.name === section));
+    if (foreign.length) throw AppError.badRequest(`هذه الفصول ليست من فصولك في هذه المادة: ${foreign.join('، ')}`);
+    return sections.map((section) => taught.find((cls) => cls.name === section).id);
   }
 }
 
 export default MaterialsService;
-

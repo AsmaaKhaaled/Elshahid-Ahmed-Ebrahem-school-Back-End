@@ -53,7 +53,6 @@ model User {
   recordedAttendances        Attendance[]           @relation("AttendanceRecorder")
   recordedGrades             Grade[]                @relation("GradeRecorder")
   announcedExams             Exam[]                 @relation("ExamAnnouncer")
-  uploadedMaterials          Material[]             @relation("MaterialUploader")
   authoredAnnouncements      Announcement[]         @relation("AnnouncementAuthor")
   announcementReads          AnnouncementRead[]
   recordedTeacherAttendances TeacherAttendance[]    @relation("TeacherAttendanceRecorder")
@@ -159,7 +158,7 @@ model Teacher {
   recordedAttendances   Attendance[]       @relation("AttendanceTeacherRecorder")
   recordedGrades        Grade[]            @relation("GradeTeacherRecorder")
   announcedExams        Exam[]             @relation("ExamTeacherAnnouncer")
-  uploadedMaterials     Material[]         @relation("MaterialTeacherUploader")
+  materials             Material[]
   authoredAnnouncements Announcement[]     @relation("AnnouncementTeacherAuthor")
   announcementReads     AnnouncementRead[]
   honorEntries          HonorRoll[]
@@ -189,7 +188,7 @@ model Class {
   timetableEntries Timetable[]
   timetablePeriods TimetablePeriod[]
 
-  materials        Material[]
+  materials        Material[]     @relation("MaterialClasses")
   attendances      Attendance[]
   exams            Exam[]
   announcements    Announcement[]
@@ -217,7 +216,6 @@ model Subject {
   teachers         Teacher[]   @relation("TeacherSubjects")
   timetableEntries Timetable[]
 
-  materials        Material[]
   exams            Exam[]
   grades           Grade[]
 
@@ -306,40 +304,45 @@ model TimetablePeriod {
 }
 
 // ==========================================
-// 7. Materials & Syllabus Management
+// 7. Lesson materials (المواد والملفات التعليمية)
 // ==========================================
 
-enum MaterialType {
-  SYLLABUS_PDF
-  MONTHLY_PLAN
-  WORKSHEET
-  REFERENCE
+// What a teacher publishes to their classes: files and / or a link (a YouTube or Drive video...).
+// Their students see it as soon as it's saved.
+model Material {
+  id          String   @id @default(cuid())
+  teacherId   String
+  // Arabic subject name, as in Teacher.teachingSubjects (e.g. "الرياضيات")
+  subject     String
+  title       String
+  description String   @default("")
+  link        String?
+  publishedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  teacher Teacher        @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  classes Class[]        @relation("MaterialClasses")
+  files   MaterialFile[]
+
+  @@index([teacherId, publishedAt])
+  @@index([publishedAt])
+  @@map("materials")
 }
 
-model Material {
-  id           String       @id @default(cuid())
-  title        String
-  type         MaterialType @default(SYLLABUS_PDF)
-  subjectId    String
-  classId      String?
-  month        String? // e.g. "October"
-  fileUrl      String
-  fileName     String?
-  fileSize     String?
-  description  String?
-  uploadedById String? // an admin (users)
-  uploadedByTeacherId String? // or a teacher
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+model MaterialFile {
+  id         String   @id @default(cuid())
+  materialId String
+  fileName   String
+  fileSize   Int
+  fileType   String?
+  // Where the file is kept, relative to the uploads folder
+  fileKey    String
+  uploadedAt DateTime @default(now())
 
-  subject         Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  class           Class?   @relation(fields: [classId], references: [id], onDelete: SetNull)
-  uploader        User?    @relation("MaterialUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
-  teacherUploader Teacher? @relation("MaterialTeacherUploader", fields: [uploadedByTeacherId], references: [id], onDelete: SetNull)
+  material Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
 
-  @@index([subjectId])
-  @@index([classId])
-  @@map("materials")
+  @@index([materialId, uploadedAt])
+  @@map("material_files")
 }
 
 // ==========================================

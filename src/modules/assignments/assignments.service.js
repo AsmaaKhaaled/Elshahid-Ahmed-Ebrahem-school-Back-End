@@ -2,7 +2,7 @@ import { prisma } from '../../config/database.js';
 import { AppError } from '../../shared/errors/app-error.js';
 import { removeStoredFiles, storageKey } from '../../shared/utils/file-storage.js';
 import { buildPaginationMeta, parsePagination } from '../../shared/utils/pagination.js';
-import { assignmentsOf } from '../teachers/teachers.service.js';
+import { classesTeachingSubject } from '../../shared/utils/teaching-scope.js';
 import { keepFileIdsOf } from './assignments.validation.js';
 
 const DEFAULT_PAGE_SIZE = 20;
@@ -357,28 +357,8 @@ export class AssignmentsService {
     return row;
   }
 
-  /** The classes this teacher teaches this subject to, as the admin assigned them. */
-  static async classesTeaching(teacherId, subject) {
-    const [teacher, classes] = await Promise.all([
-      prisma.teacher.findUnique({
-        where: { id: teacherId },
-        select: { teachingSubjects: true, teachingAssignments: true, specialization: true },
-      }),
-      prisma.class.findMany({
-        where: { isActive: true, OR: [{ assignedTeachers: { some: { id: teacherId } } }, { classTeacherId: teacherId }] },
-        select: { id: true, name: true },
-      }),
-    ]);
-    if (!teacher) throw AppError.forbidden('هذا الحساب غير مرتبط بملف معلم');
-
-    const subjects = teacher.teachingSubjects.length ? teacher.teachingSubjects : [teacher.specialization];
-    if (!subjects.includes(subject)) throw AppError.badRequest('هذه المادة ليست من المواد التي تدرّسها');
-
-    // All the teacher's classes for records saved before per-subject classes existed
-    const names = assignmentsOf(teacher, classes.map((cls) => cls.name)).find((a) => a.subject === subject)?.classes;
-    const taught = names?.length ? classes.filter((cls) => names.includes(cls.name)) : classes;
-    if (!taught.length) throw AppError.badRequest('لا توجد فصول مسجلة لك بعد، اطلب من الإدارة تعيين فصولك');
-    return taught;
+  static classesTeaching(teacherId, subject) {
+    return classesTeachingSubject(teacherId, subject);
   }
 }
 
