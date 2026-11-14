@@ -12,6 +12,7 @@ export const SYSTEM_PERMISSIONS = [
   'platform-activity',
   'honor-roll',
   'announcements',
+  'home-content',
 ];
 
 const NATIONAL_ID_REGEX = /^\d{14}$/;

@@ -80,7 +80,19 @@ export class ClassesController {
       next(error);
     }
   }
+
+  static async assignAdvisor(req, res, next) {
+    try {
+      const cls = await ClassesService.assignAdvisor(req.params.id, req.body);
+      return ApiResponse.success(res, {
+        statusCode: 200,
+        message: req.body?.teacherId ? 'تم تعيين رائد الفصل بنجاح' : 'تم إلغاء تعيين رائد الفصل بنجاح',
+        data: cls,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 export default ClassesController;
-

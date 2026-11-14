@@ -278,6 +278,34 @@ const schemas = {
     properties: { name: { type: 'string' }, gradeLevel: { type: 'string' } },
     additionalProperties: true,
   },
+  AssignAdvisor: {
+    type: 'object',
+    properties: {
+      teacherId: { type: 'string', nullable: true, description: 'Teacher ID or null to unassign' },
+      year: { type: 'string', example: '2026/2027' },
+      since: { type: 'string', example: '2026-11-11' },
+      reason: { type: 'string', example: 'بداية عام دراسي جديد' },
+      note: { type: 'string', example: '' },
+    },
+  },
+  ClassStructure: {
+    type: 'object',
+    required: ['grades'],
+    properties: {
+      grades: {
+        type: 'array',
+        items: {
+          type: 'object',
+          required: ['grade', 'sections', 'capacity'],
+          properties: {
+            grade: { type: 'integer', minimum: 1, maximum: 3 },
+            sections: { type: 'integer', minimum: 1, maximum: 10 },
+            capacity: { type: 'integer', minimum: 20, maximum: 50 },
+          },
+        },
+      },
+    },
+  },
 
   // Subjects
   CreateSubject: {
@@ -543,6 +571,36 @@ const schemas = {
       },
     },
   },
+
+  // Academic Year (العام والفصل الدراسي)
+  AcademicTerm: {
+    type: 'object',
+    properties: {
+      id: { type: 'string', example: '2026-2027-T1' },
+      year: { type: 'string', example: '2026/2027' },
+      term: { type: 'integer', example: 1 },
+      label: { type: 'string', example: 'الفصل الدراسي الأول 2026/2027' },
+      isCurrent: { type: 'boolean', example: true },
+      startedAt: { type: 'string', format: 'date', nullable: true, example: '2026-09-19' },
+      endedAt: { type: 'string', format: 'date', nullable: true, example: null },
+      plannedStartDate: { type: 'string', format: 'date', nullable: true, example: '2026-09-19' },
+      plannedEndDate: { type: 'string', format: 'date', nullable: true, example: '2027-01-21' },
+    },
+  },
+  AddNextTerm: {
+    type: 'object',
+    properties: {
+      plannedStartDate: { type: 'string', format: 'date', example: '2027-02-06' },
+      plannedEndDate: { type: 'string', format: 'date', example: '2027-06-10' },
+    },
+  },
+  UpdatePlannedDates: {
+    type: 'object',
+    properties: {
+      plannedStartDate: { type: 'string', format: 'date', example: '2027-02-06' },
+      plannedEndDate: { type: 'string', format: 'date', example: '2027-06-10' },
+    },
+  },
 };
 
 // ---------- Paths ----------
@@ -706,6 +764,31 @@ const paths = {
   },
 
   // Classes & Subjects
+  '/api/v1/classes/structure': {
+    get: {
+      tags: ['Classes'],
+      summary: 'Get class structure per grade',
+      description: roles(...ADMIN_TEACHER),
+      responses: responses(200, 401),
+    },
+    put: {
+      tags: ['Classes'],
+      summary: 'Save class structure and capacity per grade',
+      description: roles(...ADMIN),
+      requestBody: jsonBody(ref('ClassStructure')),
+      responses: responses(200, 401, 403, 422),
+    },
+  },
+  '/api/v1/classes/{id}/advisor': {
+    put: {
+      tags: ['Classes'],
+      summary: 'Assign or change class advisor',
+      description: roles(...ADMIN),
+      parameters: [idParam()],
+      requestBody: jsonBody(ref('AssignAdvisor')),
+      responses: responses(200, 400, 401, 403, 404, 422),
+    },
+  },
   ...crud({
     tag: 'Classes',
     base: '/api/v1/classes',
@@ -1319,6 +1402,60 @@ const paths = {
     },
   },
 
+  // Academic Year (العام والفصل الدراسي)
+  '/api/v1/academic-year/current': {
+    get: {
+      tags: ['Academic Year'],
+      summary: 'Get current academic term',
+      description: 'Public endpoint. Retrieves the current active academic term used across header and system pages.',
+      responses: responses(200, 404),
+    },
+  },
+  '/api/v1/academic-year': {
+    get: {
+      tags: ['Academic Year'],
+      summary: 'Get all academic terms timeline',
+      description: roles('ADMIN', 'SUPER_ADMIN', 'TEACHER', 'STUDENT'),
+      responses: responses(200, 401),
+    },
+  },
+  '/api/v1/academic-year/transition': {
+    post: {
+      tags: ['Academic Year'],
+      summary: 'Transition to next academic term (end current and start next)',
+      description: `${roles('ADMIN', 'SUPER_ADMIN')} - Requires \`academic-year\` permission.`,
+      responses: responses(200, 401, 403, 422),
+    },
+  },
+  '/api/v1/academic-year/next': {
+    post: {
+      tags: ['Academic Year'],
+      summary: 'Add next term to timeline',
+      description: `${roles('ADMIN', 'SUPER_ADMIN')} - Requires \`academic-year\` permission.`,
+      requestBody: jsonBody(ref('AddNextTerm'), false),
+      responses: { 201: { description: 'Created' }, ...responses(401, 403, 409, 422) },
+    },
+  },
+  '/api/v1/academic-year/terms/{id}/dates': {
+    patch: {
+      tags: ['Academic Year'],
+      summary: 'Update planned dates of an academic term',
+      description: `${roles('ADMIN', 'SUPER_ADMIN')} - Requires \`academic-year\` permission.`,
+      parameters: [idParam('id', 'Term ID (e.g. 2026-2027-T2)')],
+      requestBody: jsonBody(ref('UpdatePlannedDates')),
+      responses: responses(200, 401, 403, 404, 422),
+    },
+  },
+  '/api/v1/academic-year/terms/{id}': {
+    delete: {
+      tags: ['Academic Year'],
+      summary: 'Delete latest upcoming academic term',
+      description: `${roles('ADMIN', 'SUPER_ADMIN')} - Requires \`academic-year\` permission. Only the latest upcoming term can be deleted.`,
+      parameters: [idParam('id', 'Term ID (e.g. 2026-2027-T2)')],
+      responses: responses(200, 401, 403, 404, 422),
+    },
+  },
+
   // Admins (Super Admin only) — also reachable under /api/v1/admin/admins
   '/api/v1/admin': {
     get: {
@@ -1416,6 +1553,7 @@ export const swaggerSpec = {
     'Announcements',
     'Honor Roll',
     'Home Content',
+    'Academic Year',
   ].map((name) => ({ name })),
   components: {
     securitySchemes: {

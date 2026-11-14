@@ -110,7 +110,111 @@ export class ClassesService {
     }
     return true;
   }
+
+  /**
+   * Assign or Change Class Advisor
+   * Body: { teacherId, year, since, reason, note }
+   */
+  static async assignAdvisor(classId, { teacherId, year, since, reason, note } = {}) {
+    // 1. Verify class exists by id or name
+    const cls = await ClassModel.findById(classId);
+    if (!cls) {
+      throw AppError.notFound('الفصل الدراسي غير موجود');
+    }
+
+    const currentYear = year || '2026/2027';
+    const effectiveSince = since || new Date().toISOString().slice(0, 10);
+    const history = Array.isArray(cls.advisorHistory) ? [...cls.advisorHistory] : [];
+
+    // 2. Case A: If teacherId is null or empty string -> unassign advisor
+    if (!teacherId) {
+      const unassignEntry = {
+        teacherId: null,
+        previousTeacherId: cls.classTeacherId,
+        year: currentYear,
+        since: effectiveSince,
+        reason: reason || 'إلغاء ريادة الفصل',
+        note: note || '',
+        assignedAt: new Date().toISOString(),
+      };
+
+      const updated = await prisma.class.update({
+        where: { id: cls.id },
+        data: {
+          classTeacherId: null,
+          advisorHistory: [...history, unassignEntry],
+        },
+        include: {
+          classTeacher: true,
+          _count: {
+            select: { students: { where: { isActive: true } } },
+          },
+        },
+      });
+
+      return ClassModel.formatClass(updated);
+    }
+
+    // 3. Case B: If teacherId is provided -> assign or change advisor
+    const teacher = await prisma.teacher.findUnique({
+      where: { id: teacherId },
+    });
+
+    if (!teacher) {
+      throw AppError.notFound('المعلم غير موجود');
+    }
+
+    if (!teacher.isActive) {
+      throw AppError.badRequest('حساب المعلم غير نشط');
+    }
+
+    if (teacher.employmentStatus !== 'ON_DUTY') {
+      throw AppError.badRequest('المعلم ليس على رأس العمل ولا يمكن تعيينه رائداً للفصل');
+    }
+
+    // Check no duplicate advisor:
+    // A teacher cannot be an advisor to another class in the same school setup
+    const existingAdvisedClass = await prisma.class.findFirst({
+      where: {
+        classTeacherId: teacherId,
+        id: { not: cls.id },
+        isActive: true,
+      },
+    });
+
+    if (existingAdvisedClass) {
+      throw AppError.badRequest(
+        `المعلم رائد بالفعل لفصل ${existingAdvisedClass.name}، لا يمكن تعيينه لأكثر من فصل`
+      );
+    }
+
+    const newEntry = {
+      teacherId,
+      teacherName: teacher.fullNameArabic,
+      teacherCode: teacher.teacherCode,
+      year: currentYear,
+      since: effectiveSince,
+      reason: reason || 'بداية عام دراسي جديد',
+      note: note || '',
+      assignedAt: new Date().toISOString(),
+    };
+
+    const updated = await prisma.class.update({
+      where: { id: cls.id },
+      data: {
+        classTeacherId: teacherId,
+        advisorHistory: [...history, newEntry],
+      },
+      include: {
+        classTeacher: true,
+        _count: {
+          select: { students: { where: { isActive: true } } },
+        },
+      },
+    });
+
+    return ClassModel.formatClass(updated);
+  }
 }
 
 export default ClassesService;
-

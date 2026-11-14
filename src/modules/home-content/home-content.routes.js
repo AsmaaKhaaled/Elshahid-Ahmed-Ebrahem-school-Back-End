@@ -2,8 +2,7 @@ import { Router } from 'express';
 import { HomeContentController } from './home-content.controller.js';
 import { homeContentValidation } from './home-content.validation.js';
 import { validate } from '../../middlewares/validate.middleware.js';
-import { authenticate } from '../../middlewares/auth.middleware.js';
-import { authorize } from '../../middlewares/role.middleware.js';
+import { authenticate, checkPermission } from '../../middlewares/auth.middleware.js';
 
 const router = Router();
 
@@ -16,7 +15,7 @@ router.get('/gallery', HomeContentController.getGallerySlides);
 router.put(
   '/principal',
   authenticate,
-  authorize('ADMIN', 'SUPER_ADMIN'),
+  checkPermission('home-content'),
   validate(homeContentValidation.updatePrincipalWord),
   HomeContentController.updatePrincipalWord
 );
@@ -26,7 +25,7 @@ router.put(
 router.post(
   '/gallery',
   authenticate,
-  authorize('ADMIN', 'SUPER_ADMIN'),
+  checkPermission('home-content'),
   validate(homeContentValidation.createGallerySlide),
   HomeContentController.createGallerySlide
 );
@@ -34,7 +33,7 @@ router.post(
 router.put(
   '/gallery/reorder',
   authenticate,
-  authorize('ADMIN', 'SUPER_ADMIN'),
+  checkPermission('home-content'),
   validate(homeContentValidation.reorderGallerySlides),
   HomeContentController.reorderGallerySlides
 );
@@ -42,7 +41,7 @@ router.put(
 router.put(
   '/gallery/:id',
   authenticate,
-  authorize('ADMIN', 'SUPER_ADMIN'),
+  checkPermission('home-content'),
   validate(homeContentValidation.updateGallerySlide),
   HomeContentController.updateGallerySlide
 );
@@ -50,14 +49,14 @@ router.put(
 router.patch(
   '/gallery/:id/toggle-hidden',
   authenticate,
-  authorize('ADMIN', 'SUPER_ADMIN'),
+  checkPermission('home-content'),
   HomeContentController.toggleHidden
 );
 
 router.delete(
   '/gallery/:id',
   authenticate,
-  authorize('ADMIN', 'SUPER_ADMIN'),
+  checkPermission('home-content'),
   HomeContentController.deleteGallerySlide
 );
 
